@@ -78,10 +78,29 @@ header p {
     border-color: #667eea;
 }
 
-.task-input textarea {
-    min-height: 100px;
-    resize: vertical;
-    font-family: inherit;
+.task-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.task-input-row input {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.task-input-row input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.task-input-row .btn {
+    flex-shrink: 0;
+    padding: 12px 20px;
 }
 
 .btn {
@@ -203,11 +222,34 @@ header p {
 
 .task-item {
     background: #f8f9fa;
-    padding: 10px;
+    padding: 12px;
     margin-bottom: 8px;
     border-radius: 6px;
     border-left: 4px solid #667eea;
     font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.task-item-text {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.task-item-remove {
+    background: #e53e3e;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.task-item-remove:hover {
+    background: #c53030;
 }
 
 .blocked-list {

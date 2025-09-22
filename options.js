@@ -8,7 +8,8 @@ class TunnlOptions {
             extensionEnabled: true,
             blockingMode: 'moderate',
             blockedSites: [],
-            stats: { blockedCount: 0, analyzedCount: 0 }
+            stats: { blockedCount: 0, analyzedCount: 0 },
+            allowlist: []
         };
         this.init();
     }
@@ -20,27 +21,50 @@ class TunnlOptions {
     }
 
     async loadSettings() {
-        const result = await chrome.storage.sync.get([
-            'openaiApiKey',
-            'tasks',
-            'extensionEnabled',
-            'blockingMode',
-            'blockedSites',
-            'stats'
-        ]);
-
-        this.settings = {
-            openaiApiKey: result.openaiApiKey || '',
-            tasks: result.tasks || [],
-            extensionEnabled: result.extensionEnabled !== false,
-            blockingMode: result.blockingMode || 'moderate',
-            blockedSites: result.blockedSites || [],
-            stats: result.stats || { blockedCount: 0, analyzedCount: 0 }
-        };
+        // Get settings from background script instead of reading storage directly
+        try {
+            const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+            if (response.success) {
+                this.settings = response.settings;
+            } else {
+                console.error('Failed to load settings:', response.error);
+                this.settings = {
+                    openaiApiKey: '',
+                    tasks: [],
+                    extensionEnabled: true,
+                    blockingMode: 'moderate',
+                    blockedSites: [],
+                    stats: { blockedCount: 0, analyzedCount: 0 },
+                    allowlist: []
+                };
+            }
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            this.settings = {
+                openaiApiKey: '',
+                tasks: [],
+                extensionEnabled: true,
+                blockingMode: 'moderate',
+                blockedSites: [],
+                stats: { blockedCount: 0, analyzedCount: 0 },
+                allowlist: []
+            };
+        }
     }
 
     async saveSettings() {
-        await chrome.storage.sync.set(this.settings);
+        // Send settings to background script instead of writing storage directly
+        try {
+            const response = await chrome.runtime.sendMessage({
+                type: 'UPDATE_SETTINGS',
+                settings: this.settings
+            });
+            if (!response.success) {
+                console.error('Failed to save settings:', response.error);
+            }
+        } catch (error) {
+            console.error('Error saving settings:', error);
+        }
     }
 
     setupEventListeners() {
@@ -229,6 +253,7 @@ class TunnlOptions {
         document.getElementById('tasks').value = this.settings.tasks.join('\n');
         document.getElementById('extension-enabled').value = this.settings.extensionEnabled.toString();
         document.getElementById('blocking-mode').value = this.settings.blockingMode;
+        this.renderAllowlist();
 
         // Update statistics
         document.getElementById('total-blocked').textContent = this.settings.stats.blockedCount;
@@ -246,6 +271,100 @@ class TunnlOptions {
             ? Math.round((this.settings.stats.blockedCount / this.settings.stats.analyzedCount) * 100)
             : 0;
         document.getElementById('focus-score').textContent = `${focusScore}%`;
+
+        // Render recently blocked
+        this.renderBlockedHistory();
+    }
+
+    // Allowlist UI
+    renderAllowlist() {
+        const container = document.getElementById('allowlist-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const list = document.createElement('div');
+        this.settings.allowlist = Array.isArray(this.settings.allowlist) ? this.settings.allowlist : [];
+        this.settings.allowlist.forEach((domain, idx) => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.justifyContent = 'space-between';
+            row.style.alignItems = 'center';
+            row.style.padding = '8px 0';
+            
+            const text = document.createElement('div');
+            text.textContent = domain;
+            text.style.fontFamily = 'monospace';
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'btn btn-danger';
+            removeBtn.textContent = 'Remove';
+            removeBtn.addEventListener('click', async () => {
+                this.settings.allowlist.splice(idx, 1);
+                await this.saveSettings();
+                this.renderAllowlist();
+            });
+            
+            row.appendChild(text);
+            row.appendChild(removeBtn);
+            list.appendChild(row);
+        });
+
+        container.appendChild(list);
+
+        const addBtn = document.getElementById('allowlist-add');
+        if (addBtn) {
+            addBtn.onclick = async () => {
+                const input = document.getElementById('allowlist-input');
+                let domain = (input.value || '').trim().toLowerCase();
+                if (!domain) return;
+                // Normalize: remove scheme and path
+                try {
+                    if (domain.includes('://')) domain = new URL(domain).hostname.toLowerCase();
+                } catch {}
+                domain = domain.replace(/^\*\.?/, '').replace(/^\./, '');
+                if (!this.settings.allowlist.includes(domain)) {
+                    this.settings.allowlist.push(domain);
+                    await this.saveSettings();
+                    input.value = '';
+                    this.renderAllowlist();
+                }
+            };
+        }
+    }
+
+    renderBlockedHistory() {
+        const container = document.getElementById('options-blocked-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const recentBlocked = (this.settings.blockedSites || []).slice(-50).reverse();
+        recentBlocked.forEach(site => {
+            const row = document.createElement('div');
+            row.className = 'blocked-item';
+
+            const urlSpan = document.createElement('span');
+            urlSpan.className = 'blocked-url';
+            urlSpan.textContent = site.url;
+
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'blocked-time';
+            timeSpan.textContent = new Date(site.timestamp).toLocaleString();
+
+            row.appendChild(urlSpan);
+            row.appendChild(timeSpan);
+            container.appendChild(row);
+        });
+
+        const clearBtn = document.getElementById('options-clear-blocked');
+        if (clearBtn) {
+            clearBtn.onclick = async () => {
+                this.settings.blockedSites = [];
+                this.settings.stats.blockedCount = 0;
+                await this.saveSettings();
+                this.updateUI();
+                this.showMessage('Blocked history cleared', 'success');
+            };
+        }
     }
 
     showMessage(text, type) {

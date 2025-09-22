@@ -10,7 +10,7 @@
     <div class="container">
         <header>
             <h1>🎯 tunnl.ai</h1>
-            <p>AI-powered website blocker</p>
+            <p>AI-powered distraction blocker</p>
         </header>
 
         <div class="section" id="setup-section">
@@ -23,10 +23,12 @@
         </div>
 
         <div class="section" id="tasks-section" style="display: none;">
-            <h2>Today's Tasks</h2>
+            <h2>Current Tasks</h2>
             <div class="task-input">
-                <textarea id="task-input" placeholder="Enter your tasks for today (one per line)"></textarea>
-                <button id="save-tasks" class="btn btn-primary">Save Tasks</button>
+                <div class="task-input-row">
+                    <input type="text" id="new-task-input" placeholder="Enter a new task">
+                    <button id="add-task-btn" class="btn btn-primary">Add Task</button>
+                </div>
             </div>
             
             <div class="task-list" id="task-list">
@@ -34,35 +36,7 @@
             </div>
         </div>
 
-        <div class="section" id="status-section" style="display: none;">
-            <h2>Status</h2>
-            <div class="status-indicator">
-                <span id="status-text">Extension is active</span>
-                <div class="toggle-switch">
-                    <input type="checkbox" id="extension-toggle" checked>
-                    <label for="extension-toggle"></label>
-                </div>
-            </div>
-            
-            <div class="stats">
-                <div class="stat">
-                    <span class="stat-number" id="blocked-count">0</span>
-                    <span class="stat-label">Sites Blocked</span>
-                </div>
-                <div class="stat">
-                    <span class="stat-number" id="analyzed-count">0</span>
-                    <span class="stat-label">URLs Analyzed</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="section" id="blocked-sites-section" style="display: none;">
-            <h2>Recently Blocked</h2>
-            <div class="blocked-list" id="blocked-list">
-                <!-- Blocked sites will be displayed here -->
-            </div>
-            <button id="clear-blocked" class="btn btn-secondary">Clear History</button>
-        </div>
+        
 
         <div class="footer">
             <button id="settings-btn" class="btn btn-link">Settings</button>

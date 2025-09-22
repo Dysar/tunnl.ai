@@ -12,25 +12,46 @@ class TunnlPopup {
     }
 
     async loadSettings() {
-        const result = await chrome.storage.sync.get([
-            'openaiApiKey',
-            'tasks',
-            'extensionEnabled',
-            'blockedSites',
-            'stats'
-        ]);
-
-        this.settings = {
-            openaiApiKey: result.openaiApiKey || '',
-            tasks: result.tasks || [],
-            extensionEnabled: result.extensionEnabled !== false,
-            blockedSites: result.blockedSites || [],
-            stats: result.stats || { blockedCount: 0, analyzedCount: 0 }
-        };
+        // Get settings from background script instead of reading storage directly
+        try {
+            const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+            if (response.success) {
+                this.settings = response.settings;
+            } else {
+                console.error('Failed to load settings:', response.error);
+                this.settings = {
+                    openaiApiKey: '',
+                    tasks: [],
+                    extensionEnabled: true,
+                    blockedSites: [],
+                    stats: { blockedCount: 0, analyzedCount: 0 }
+                };
+            }
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            this.settings = {
+                openaiApiKey: '',
+                tasks: [],
+                extensionEnabled: true,
+                blockedSites: [],
+                stats: { blockedCount: 0, analyzedCount: 0 }
+            };
+        }
     }
 
     async saveSettings() {
-        await chrome.storage.sync.set(this.settings);
+        // Send settings to background script instead of writing storage directly
+        try {
+            const response = await chrome.runtime.sendMessage({
+                type: 'UPDATE_SETTINGS',
+                settings: this.settings
+            });
+            if (!response.success) {
+                console.error('Failed to save settings:', response.error);
+            }
+        } catch (error) {
+            console.error('Error saving settings:', error);
+        }
     }
 
     setupEventListeners() {
@@ -39,20 +60,19 @@ class TunnlPopup {
             this.saveApiKey();
         });
 
-        // Tasks save
-        document.getElementById('save-tasks').addEventListener('click', () => {
-            this.saveTasks();
+        // Add task
+        document.getElementById('add-task-btn').addEventListener('click', () => {
+            this.addTask();
         });
 
-        // Extension toggle
-        document.getElementById('extension-toggle').addEventListener('change', (e) => {
-            this.toggleExtension(e.target.checked);
+        // Enter key for adding tasks
+        document.getElementById('new-task-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.addTask();
         });
 
-        // Clear blocked sites
-        document.getElementById('clear-blocked').addEventListener('click', () => {
-            this.clearBlockedSites();
-        });
+        // Removed toggle; Chrome handles enable/disable
+
+        // Removed clear blocked sites from popup; managed in Settings
 
         // Settings button
         document.getElementById('settings-btn').addEventListener('click', () => {
@@ -85,40 +105,36 @@ class TunnlPopup {
         this.updateUI();
     }
 
-    async saveTasks() {
-        const taskText = document.getElementById('task-input').value.trim();
+    async addTask() {
+        const taskInput = document.getElementById('new-task-input');
+        const taskText = taskInput.value.trim();
         
         if (!taskText) {
-            this.showMessage('Please enter at least one task', 'error');
+            this.showMessage('Please enter a task', 'error');
             return;
         }
 
-        const tasks = taskText.split('\n')
-            .map(task => task.trim())
-            .filter(task => task.length > 0);
+        if (this.settings.tasks.includes(taskText)) {
+            this.showMessage('Task already exists', 'error');
+            return;
+        }
 
-        this.settings.tasks = tasks;
+        this.settings.tasks.push(taskText);
         await this.saveSettings();
         
-        this.showMessage(`Saved ${tasks.length} tasks!`, 'success');
+        taskInput.value = '';
+        this.showMessage('Task added!', 'success');
         this.updateUI();
     }
 
-    async toggleExtension(enabled) {
-        this.settings.extensionEnabled = enabled;
+    async removeTask(taskIndex) {
+        this.settings.tasks.splice(taskIndex, 1);
         await this.saveSettings();
-        
-        // Notify background script
-        chrome.runtime.sendMessage({
-            type: 'TOGGLE_EXTENSION',
-            enabled: enabled
-        });
-
-        this.showMessage(
-            enabled ? 'Extension enabled' : 'Extension disabled',
-            'success'
-        );
+        this.showMessage('Task removed!', 'success');
+        this.updateUI();
     }
+
+    // Removed toggleExtension; use Chrome extension controls instead
 
     async clearBlockedSites() {
         this.settings.blockedSites = [];
@@ -141,23 +157,18 @@ class TunnlPopup {
 
         document.getElementById('setup-section').style.display = hasApiKey ? 'none' : 'block';
         document.getElementById('tasks-section').style.display = hasApiKey ? 'block' : 'none';
-        document.getElementById('status-section').style.display = hasTasks ? 'block' : 'none';
-        document.getElementById('blocked-sites-section').style.display = hasTasks ? 'block' : 'none';
+        // Removed status/history sections from popup
 
         // Populate form fields
         document.getElementById('api-key').value = this.settings.openaiApiKey;
-        document.getElementById('task-input').value = this.settings.tasks.join('\n');
-        document.getElementById('extension-toggle').checked = this.settings.extensionEnabled;
+        // Task input is now individual, no need to populate
 
-        // Update stats
-        document.getElementById('blocked-count').textContent = this.settings.stats.blockedCount;
-        document.getElementById('analyzed-count').textContent = this.settings.stats.analyzedCount;
+        // Stats are shown in Settings only
 
         // Update task list
         this.updateTaskList();
         
-        // Update blocked sites list
-        this.updateBlockedSitesList();
+        // Recently blocked is shown in Settings only
     }
 
     updateTaskList() {
@@ -172,29 +183,7 @@ class TunnlPopup {
         });
     }
 
-    updateBlockedSitesList() {
-        const blockedList = document.getElementById('blocked-list');
-        blockedList.innerHTML = '';
-
-        const recentBlocked = this.settings.blockedSites.slice(-10).reverse();
-
-        recentBlocked.forEach(site => {
-            const blockedItem = document.createElement('div');
-            blockedItem.className = 'blocked-item';
-            
-            const urlSpan = document.createElement('span');
-            urlSpan.className = 'blocked-url';
-            urlSpan.textContent = site.url;
-            
-            const timeSpan = document.createElement('span');
-            timeSpan.className = 'blocked-time';
-            timeSpan.textContent = this.formatTime(site.timestamp);
-            
-            blockedItem.appendChild(urlSpan);
-            blockedItem.appendChild(timeSpan);
-            blockedList.appendChild(blockedItem);
-        });
-    }
+    // Removed blocked sites list rendering from popup
 
     formatTime(timestamp) {
         const now = Date.now();

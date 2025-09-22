@@ -14,9 +14,13 @@ class TunnlBackground {
     }
 
     async init() {
+        console.log('tunnl.ai background script loaded');
         await this.loadSettings();
         this.setupEventListeners();
         this.setupNavigationListener();
+        this.setupStorageListener();
+        this.updateBadge(this.settings.extensionEnabled);
+        console.log('tunnl.ai initialized, extension enabled:', this.settings.extensionEnabled);
     }
 
     async loadSettings() {
@@ -25,7 +29,8 @@ class TunnlBackground {
             'tasks',
             'extensionEnabled',
             'blockedSites',
-            'stats'
+            'stats',
+            'allowlist'
         ]);
 
         this.settings = {
@@ -33,7 +38,8 @@ class TunnlBackground {
             tasks: result.tasks || [],
             extensionEnabled: result.extensionEnabled !== false,
             blockedSites: result.blockedSites || [],
-            stats: result.stats || { blockedCount: 0, analyzedCount: 0 }
+            stats: result.stats || { blockedCount: 0, analyzedCount: 0 },
+            allowlist: Array.isArray(result.allowlist) ? result.allowlist : []
         };
     }
 
@@ -48,17 +54,26 @@ class TunnlBackground {
             return true; // Keep message channel open for async response
         });
 
-        // Listen for tab updates
-        chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-            if (changeInfo.status === 'complete' && tab.url) {
-                this.handleTabUpdate(tabId, tab);
-            }
+        // Removed tabs.onUpdated - using only webNavigation.onCommitted
+
+        // Toggle on toolbar icon click
+        chrome.action.onClicked.addListener(async () => {
+            this.settings.extensionEnabled = !this.settings.extensionEnabled;
+            console.log('Extension toggled to:', this.settings.extensionEnabled ? 'ON' : 'OFF');
+            await this.saveSettings();
+            this.updateBadge(this.settings.extensionEnabled);
+
+            // Optional: notify popup/options if open
+            chrome.runtime.sendMessage({
+                type: 'TOGGLE_EXTENSION',
+                enabled: this.settings.extensionEnabled
+            }).catch(() => {});
         });
     }
 
     setupNavigationListener() {
-        // Use webNavigation API to track navigation
-        chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+        // Use webNavigation API to track navigation - single event
+        chrome.webNavigation.onCommitted.addListener((details) => {
             if (details.frameId === 0) { // Main frame only
                 this.handleNavigation(details);
             }
@@ -70,6 +85,7 @@ class TunnlBackground {
             case 'TOGGLE_EXTENSION':
                 this.settings.extensionEnabled = message.enabled;
                 await this.saveSettings();
+                this.updateBadge(this.settings.extensionEnabled);
                 sendResponse({ success: true });
                 break;
 
@@ -86,6 +102,12 @@ class TunnlBackground {
                 sendResponse({ success: true, settings: this.settings });
                 break;
 
+            case 'UPDATE_SETTINGS':
+                this.settings = { ...this.settings, ...message.settings };
+                await this.saveSettings();
+                sendResponse({ success: true });
+                break;
+
             case 'OPEN_SETTINGS':
                 chrome.runtime.openOptionsPage();
                 sendResponse({ success: true });
@@ -96,16 +118,49 @@ class TunnlBackground {
         }
     }
 
-    async handleTabUpdate(tabId, tab) {
-        if (!this.settings.extensionEnabled || !tab.url) return;
-        
-        // Skip chrome:// and extension URLs
-        if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-            return;
-        }
-
-        await this.analyzeAndBlockUrl(tab.url, tabId);
+    updateBadge(enabled) {
+        const text = enabled ? 'ON' : 'OFF';
+        const color = enabled ? '#6b46c1' /* purple-ish */ : '#9ca3af' /* gray */;
+        chrome.action.setBadgeText({ text });
+        chrome.action.setBadgeBackgroundColor({ color });
     }
+
+    setupStorageListener() {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== 'sync') return;
+
+            if (changes.openaiApiKey) {
+                this.settings.openaiApiKey = changes.openaiApiKey.newValue || '';
+                console.log('API key updated (masked):', this.settings.openaiApiKey ? '***' : '(empty)');
+            }
+
+            if (changes.tasks) {
+                this.settings.tasks = Array.isArray(changes.tasks.newValue) ? changes.tasks.newValue : [];
+                console.log('Tasks updated, count:', this.settings.tasks.length);
+            }
+
+            if (changes.extensionEnabled) {
+                this.settings.extensionEnabled = changes.extensionEnabled.newValue !== false;
+                this.updateBadge(this.settings.extensionEnabled);
+                console.log('Extension enabled updated via storage:', this.settings.extensionEnabled);
+            }
+
+            if (changes.stats) {
+                this.settings.stats = changes.stats.newValue || this.settings.stats;
+            }
+
+            if (changes.blockedSites) {
+                this.settings.blockedSites = changes.blockedSites.newValue || this.settings.blockedSites;
+            }
+
+            if (changes.allowlist) {
+                this.settings.allowlist = Array.isArray(changes.allowlist.newValue) ? changes.allowlist.newValue : [];
+                console.log('Allowlist updated, count:', this.settings.allowlist.length);
+            }
+        });
+    }
+
+    // Removed handleTabUpdate - using only handleNavigation
 
     async handleNavigation(details) {
         if (!this.settings.extensionEnabled) return;
@@ -149,8 +204,16 @@ class TunnlBackground {
     }
 
     async analyzeUrl(url) {
+        console.log('Analyzing URL:', url);
         if (!this.settings.openaiApiKey || this.settings.tasks.length === 0) {
+            console.log('Extension not configured - API key or tasks missing');
             return { shouldBlock: false, reason: 'Not configured' };
+        }
+
+        // Check allowlist first
+        if (this.isAllowlisted(url)) {
+            console.log('URL is allowlisted:', url);
+            return { shouldBlock: false, reason: 'Allowlisted site' };
         }
 
         try {
@@ -195,15 +258,18 @@ class TunnlBackground {
 
             const data = await response.json();
             const content = data.choices[0].message.content;
+            console.log('OpenAI response:', content);
             
             try {
                 const result = JSON.parse(content);
+                console.log('Parsed result:', result);
                 return {
                     shouldBlock: result.shouldBlock || false,
                     reason: result.reason || 'No reason provided',
                     confidence: result.confidence || 0.5
                 };
             } catch (parseError) {
+                console.log('JSON parse error, using fallback:', parseError);
                 // Fallback if JSON parsing fails
                 return {
                     shouldBlock: content.toLowerCase().includes('block') && content.toLowerCase().includes('true'),
@@ -224,6 +290,7 @@ class TunnlBackground {
 
     async blockUrl(url, tabId, reason) {
         try {
+            console.log('Blocking URL:', url, 'Reason:', reason);
             // Add to blocked sites list
             this.settings.blockedSites.push({
                 url: url,
@@ -269,12 +336,35 @@ class TunnlBackground {
             }
         }
     }
+
+    // Allowlist: user-configured substrings plus core schemes
+    isAllowlisted(url) {
+        const coreSchemes = ['chrome://', 'chrome-extension://'];
+        try {
+            const lowerUrl = url.toLowerCase();
+            if (coreSchemes.some(s => lowerUrl.startsWith(s))) return true;
+
+            const list = Array.isArray(this.settings.allowlist) ? this.settings.allowlist : [];
+            return list.some(entry => {
+                let needle = (entry || '').toLowerCase().trim();
+                if (!needle) return false;
+                // Normalize entries like https://foo or *.bar.com
+                try {
+                    if (needle.includes('://')) needle = new URL(needle).hostname.toLowerCase();
+                } catch {}
+                needle = needle.replace(/^\*\.?/, '').replace(/^\./, '');
+                return lowerUrl.includes(needle);
+            });
+        } catch (error) {
+            return false;
+        }
+    }
 }
 
 // Initialize background script
 const tunnl = new TunnlBackground();
 
-// Clean up cache every hour
-setInterval(() => {
-    tunnl.cleanupCache();
-}, 60 * 60 * 1000);
+    // Clean up cache every hour
+    setInterval(() => {
+        tunnl.cleanupCache();
+    }, 60 * 60 * 1000);

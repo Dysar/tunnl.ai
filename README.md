@@ -89,10 +89,33 @@ The extension will now:
 
 ## Privacy & Security
 
-- **Local Storage**: Your API key and tasks are stored locally in Chrome
-- **No Data Collection**: We don't collect or store your browsing data
-- **OpenAI API**: Only URLs are sent to OpenAI for analysis
-- **Secure**: All communication uses HTTPS
+Short privacy note:
+
+- Storage: Your OpenAI API key, daily tasks, stats, and blocked history are saved in Chrome storage.
+  - chrome.storage.sync: API key, tasks, stats, blocked history
+  - chrome.storage.local: temporary unblocks (e.g., 10‑minute bypass)
+- Data sent to OpenAI: Only the URL being analyzed. No page content, cookies, or personal data is sent to us.
+- No server: tunnl.ai has no backend; everything runs in your browser.
+- Secure: All network communication uses HTTPS.
+
+## Cost
+
+- Model used by default: `gpt-3.5-turbo` (set in `background.js`).
+- Cost formula per request: `(prompt_tokens/1000 × input_price) + (completion_tokens/1000 × output_price)`.
+- Rough token sizes per analysis: ~700 prompt tokens (system + tasks + URL) and ~80 completion tokens.
+- Example pricing (verify your OpenAI plan): input $0.0005/1K tok, output $0.0015/1K tok.
+
+Estimated cost per request:
+- (0.7 × $0.0005) + (0.08 × $0.0015) ≈ $0.00035 + $0.00012 ≈ $0.00047
+
+Estimated cost per hour (by browsing intensity):
+- 60 URLs/hour ≈ 60 × $0.00047 ≈ $0.028/hour
+- 80 URLs/hour ≈ ~$0.038/hour
+- 120 URLs/hour ≈ ~$0.056/hour
+
+Notes:
+- Your actual cost depends on how often pages are analyzed (caching reduces calls), model choice, and response length.
+- You can switch models and adjust pricing assumptions in code or in settings as needed.
 
 ## Troubleshooting
 

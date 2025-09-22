@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tunnl.ai</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 tunnl.ai</h1>
+            <p>AI-powered website blocker</p>
+        </header>
+
+        <div class="section" id="setup-section">
+            <h2>Setup</h2>
+            <div class="input-group">
+                <label for="api-key">OpenAI API Key:</label>
+                <input type="password" id="api-key" placeholder="sk-...">
+                <button id="save-api-key" class="btn btn-primary">Save</button>
+            </div>
+        </div>
+
+        <div class="section" id="tasks-section" style="display: none;">
+            <h2>Today's Tasks</h2>
+            <div class="task-input">
+                <textarea id="task-input" placeholder="Enter your tasks for today (one per line)"></textarea>
+                <button id="save-tasks" class="btn btn-primary">Save Tasks</button>
+            </div>
+            
+            <div class="task-list" id="task-list">
+                <!-- Tasks will be displayed here -->
+            </div>
+        </div>
+
+        <div class="section" id="status-section" style="display: none;">
+            <h2>Status</h2>
+            <div class="status-indicator">
+                <span id="status-text">Extension is active</span>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="extension-toggle" checked>
+                    <label for="extension-toggle"></label>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-number" id="blocked-count">0</span>
+                    <span class="stat-label">Sites Blocked</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-number" id="analyzed-count">0</span>
+                    <span class="stat-label">URLs Analyzed</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="blocked-sites-section" style="display: none;">
+            <h2>Recently Blocked</h2>
+            <div class="blocked-list" id="blocked-list">
+                <!-- Blocked sites will be displayed here -->
+            </div>
+            <button id="clear-blocked" class="btn btn-secondary">Clear History</button>
+        </div>
+
+        <div class="footer">
+            <button id="settings-btn" class="btn btn-link">Settings</button>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

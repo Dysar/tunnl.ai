@@ -11,6 +11,7 @@ class TunnlBackground {
             taskValidationEnabled: true
         };
         this.urlCache = new Map(); // Cache for analyzed URLs
+        this.lastSuggestionPopupMs = 0; // Debounce popup suggestions
         this.init();
     }
 
@@ -141,6 +142,7 @@ class TunnlBackground {
                 }
                 break;
 
+
             case 'ADD_TO_ALLOWLIST':
                 try {
                     let { host, url } = message;
@@ -212,8 +214,8 @@ class TunnlBackground {
     async handleNavigation(details) {
         if (!this.settings.extensionEnabled) return;
         
-        // Skip chrome:// and extension URLs
-        if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://')) {
+        // Skip chrome://, devtools:// and extension URLs
+        if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://') || details.url.startsWith('devtools://')) {
             return;
         }
 
@@ -275,7 +277,7 @@ class TunnlBackground {
             await this.saveSettings();
 
             if (analysis.shouldBlock) {
-                await this.notifyBlockSuggestion(url, analysis);
+                await this.notifyBlockSuggestion(url, analysis, tabId);
             }
 
         } catch (error) {
@@ -450,10 +452,25 @@ Respond with a JSON object containing:
             try {
                 const result = JSON.parse(content);
                 console.log('Parsed result:', result);
+                const reason = (result.reason || '').toString();
+                let confidence = typeof result.confidence === 'number' ? result.confidence : 0.5;
+                let shouldBlock = !!result.shouldBlock;
+
+                // Normalize contradictions: if reason clearly says unrelated/not relevant, prefer blocking
+                const lower = reason.toLowerCase();
+                const unrelatedSignals = [
+                    'not related', 'not relevant', 'unrelated', 'irrelevant',
+                    'distracting', 'off-topic', 'different topic', 'different domain'
+                ];
+                const hasUnrelatedSignal = unrelatedSignals.some(s => lower.includes(s));
+                if (!shouldBlock && hasUnrelatedSignal && confidence >= 0.6) {
+                    shouldBlock = true;
+                }
+
                 return {
-                    shouldBlock: result.shouldBlock || false,
-                    reason: result.reason || 'No reason provided',
-                    confidence: result.confidence || 0.5
+                    shouldBlock,
+                    reason: reason || 'No reason provided',
+                    confidence
                 };
             } catch (parseError) {
                 console.log('JSON parse error, using fallback:', parseError);
@@ -475,7 +492,7 @@ Respond with a JSON object containing:
         }
     }
 
-    async notifyBlockSuggestion(url, analysis) {
+    async notifyBlockSuggestion(url, analysis, tabId) {
         try {
             const reason = analysis.reason || 'Potentially distracting';
             const confidence = typeof analysis.confidence === 'number' ? Math.round(analysis.confidence * 100) : undefined;
@@ -488,17 +505,42 @@ Respond with a JSON object containing:
             }
             await this.saveSettings();
 
-            await chrome.notifications.create(undefined, {
-                type: 'basic',
-                iconUrl: 'icon-128.png',
-                title: 'I would block this',
-                message: message,
-                contextMessage: new URL(url).hostname
-            });
+            // Debounce notifications to avoid spamming
+            const now = Date.now();
+            if (now - this.lastSuggestionPopupMs < 4000) {
+                return;
+            }
+            this.lastSuggestionPopupMs = now;
+
+
+            // Ask content script to show an in-page prompt that the user can click
+            try {
+                if (typeof tabId === 'number') {
+                    await chrome.tabs.sendMessage(tabId, {
+                        type: 'SHOW_BLOCK_TOAST',
+                        url,
+                        message
+                    });
+                }
+            } catch (msgErr) {
+                // Content script may not be ready or site CSP blocks injection; ignore
+            }
+
+            // Nudge user via badge to click the extension action
+            const previousBadge = await chrome.action.getBadgeText({});
+            const previousColor = await chrome.action.getBadgeBackgroundColor({});
+            await chrome.action.setBadgeText({ text: '!' });
+            await chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+            setTimeout(() => {
+                // Restore previous badge state
+                chrome.action.setBadgeText({ text: previousBadge || (this.settings.extensionEnabled ? 'ON' : 'OFF') });
+                chrome.action.setBadgeBackgroundColor({ color: previousColor || (this.settings.extensionEnabled ? '#6b46c1' : '#9ca3af') });
+            }, 8000);
         } catch (error) {
-            console.error('Error showing block suggestion notification:', error);
+            console.error('Error showing block suggestion toast:', error);
         }
     }
+
 
     // Clean up cache periodically
     cleanupCache() {
@@ -514,7 +556,7 @@ Respond with a JSON object containing:
 
     // Allowlist: user-configured substrings plus core schemes
     isAllowlisted(url) {
-        const coreSchemes = ['chrome://', 'chrome-extension://'];
+        const coreSchemes = ['chrome://', 'chrome-extension://', 'devtools://'];
         try {
             const lowerUrl = url.toLowerCase();
             if (coreSchemes.some(s => lowerUrl.startsWith(s))) return true;

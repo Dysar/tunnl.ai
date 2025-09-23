@@ -14,6 +14,13 @@ class TunnlContent {
 
         // Check for temporary unblock status
         await this.checkTemporaryUnblock();
+
+        // Listen for background prompts
+        chrome.runtime.onMessage.addListener((message) => {
+            if (message && message.type === 'SHOW_BLOCK_TOAST') {
+                this.showBlockToast(message.url, message.message);
+            }
+        });
     }
 
     async checkTemporaryUnblock() {
@@ -32,6 +39,57 @@ class TunnlContent {
             }
         } catch (error) {
             console.error('Error checking temporary unblock:', error);
+        }
+    }
+
+    showBlockToast(blockedUrl, reasonMessage) {
+        try {
+            // Avoid duplicate toasts
+            if (document.getElementById('tunnl-block-toast')) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.id = 'tunnl-block-toast';
+            wrapper.innerHTML = `
+                <div class="tunnl-toast">
+                    <div class="tunnl-toast-title">tunnl.ai blocked a distraction</div>
+                    <div class="tunnl-toast-body">${this.escapeHtml(reasonMessage || 'Not related to your current tasks')}</div>
+                    <div class="tunnl-toast-actions">
+                        <button id="tunnl-dismiss-toast">Dismiss</button>
+                    </div>
+                </div>
+            `;
+
+            const style = document.createElement('style');
+            style.textContent = `
+                #tunnl-block-toast { position: fixed; bottom: 20px; right: 20px; z-index: 2147483647; max-width: 360px; animation: tunnl-fade-in .2s ease-out; }
+                @keyframes tunnl-fade-in { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
+                .tunnl-toast { background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); padding: 14px 14px 12px; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+                .tunnl-toast-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+                .tunnl-toast-body { font-size: 13px; line-height: 1.4; margin-bottom: 10px; word-break: break-word; }
+                .tunnl-toast-actions { display: flex; gap: 8px; justify-content: flex-end; }
+                .tunnl-toast-actions button { font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid #4b5563; background: #1f2937; color: #e5e7eb; cursor: pointer; }
+                .tunnl-toast-actions button:hover { background: #374151; }
+            `;
+
+            document.head.appendChild(style);
+            document.body.appendChild(wrapper);
+
+            const dismiss = () => wrapper.remove();
+            document.getElementById('tunnl-dismiss-toast').addEventListener('click', dismiss);
+
+
+            // Auto-dismiss after 2 minutes
+            setTimeout(() => { try { dismiss(); } catch {} }, 120000);
+        } catch (error) {
+            // If CSP prevents injection, quietly give up
+        }
+    }
+
+    escapeHtml(text) {
+        try {
+            return String(text).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+        } catch {
+            return text;
         }
     }
 

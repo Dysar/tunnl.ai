@@ -104,6 +104,7 @@ class TunnlPopup {
             this.openSettings();
         });
 
+
         // Enter key handlers
         document.getElementById('api-key').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.saveApiKey();
@@ -229,6 +230,7 @@ class TunnlPopup {
         // Open Chrome extension options page
         chrome.runtime.openOptionsPage();
     }
+
 
     updateUI() {
         // Show/hide sections based on setup status

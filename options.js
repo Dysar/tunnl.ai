@@ -6,7 +6,7 @@ class TunnlOptions {
             openaiApiKey: '',
             tasks: [],
             extensionEnabled: true,
-            blockingMode: 'moderate',
+            // blockingMode removed
             blockedSites: [],
             stats: { blockedCount: 0, analyzedCount: 0 },
             allowlist: []
@@ -32,7 +32,7 @@ class TunnlOptions {
                     openaiApiKey: '',
                     tasks: [],
                     extensionEnabled: true,
-                    blockingMode: 'moderate',
+                    // blockingMode removed
                     blockedSites: [],
                     stats: { blockedCount: 0, analyzedCount: 0 },
                     allowlist: []
@@ -44,7 +44,7 @@ class TunnlOptions {
                 openaiApiKey: '',
                 tasks: [],
                 extensionEnabled: true,
-                blockingMode: 'moderate',
+                // blockingMode removed
                 blockedSites: [],
                 stats: { blockedCount: 0, analyzedCount: 0 },
                 allowlist: []
@@ -78,10 +78,7 @@ class TunnlOptions {
             this.saveTasks();
         });
 
-        // Settings save
-        document.getElementById('save-settings').addEventListener('click', () => {
-            this.saveExtensionSettings();
-        });
+        // Extension settings section removed
 
         // Reset stats
         document.getElementById('reset-stats').addEventListener('click', () => {
@@ -150,24 +147,7 @@ class TunnlOptions {
         this.showMessage(`Saved ${tasks.length} tasks!`, 'success');
     }
 
-    async saveExtensionSettings() {
-        const extensionEnabled = document.getElementById('extension-enabled').value === 'true';
-        const blockingMode = document.getElementById('blocking-mode').value;
-
-        this.settings.extensionEnabled = extensionEnabled;
-        this.settings.blockingMode = blockingMode;
-        await this.saveSettings();
-
-        // Notify background script
-        chrome.runtime.sendMessage({
-            type: 'TOGGLE_EXTENSION',
-            enabled: extensionEnabled
-        }).catch(() => {
-            // Ignore errors if background script is not available
-        });
-        
-        this.showMessage('Settings saved successfully!', 'success');
-    }
+    // saveExtensionSettings removed
 
     async resetStats() {
         if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
@@ -186,7 +166,6 @@ class TunnlOptions {
                 openaiApiKey: '',
                 tasks: [],
                 extensionEnabled: true,
-                blockingMode: 'moderate',
                 blockedSites: [],
                 stats: { blockedCount: 0, analyzedCount: 0 }
             };
@@ -251,8 +230,7 @@ class TunnlOptions {
         // Populate form fields
         document.getElementById('api-key').value = this.settings.openaiApiKey;
         document.getElementById('tasks').value = this.settings.tasks.join('\n');
-        document.getElementById('extension-enabled').value = this.settings.extensionEnabled.toString();
-        document.getElementById('blocking-mode').value = this.settings.blockingMode;
+        // extension-enabled removed from UI
         this.renderAllowlist();
 
         // Update statistics

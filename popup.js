@@ -11,10 +11,33 @@ class TunnlPopup {
         this.updateUI();
     }
 
+    // Send a runtime message with retries to handle MV3 service worker spin-up
+    async sendMessageWithRetry(message, maxRetries = 3, delayMs = 150) {
+        let lastError;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                const response = await chrome.runtime.sendMessage(message);
+                return response;
+            } catch (error) {
+                lastError = error;
+                // Known transient error when service worker isn't awake yet
+                const msg = (error && (error.message || String(error))) || '';
+                const isTransient = msg.includes('Receiving end does not exist') || msg.includes('Could not establish connection');
+                if (!isTransient || attempt === maxRetries - 1) {
+                    throw error;
+                }
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise(r => setTimeout(r, delayMs));
+            }
+        }
+        throw lastError;
+    }
+
     async loadSettings() {
         // Get settings from background script instead of reading storage directly
         try {
-            const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+            const response = await this.sendMessageWithRetry({ type: 'GET_SETTINGS' }, 5, 200);
             if (response.success) {
                 this.settings = response.settings;
             } else {
@@ -24,7 +47,8 @@ class TunnlPopup {
                     tasks: [],
                     extensionEnabled: true,
                     blockedSites: [],
-                    stats: { blockedCount: 0, analyzedCount: 0 }
+                    stats: { blockedCount: 0, analyzedCount: 0 },
+                    taskValidationEnabled: true
                 };
             }
         } catch (error) {
@@ -34,7 +58,8 @@ class TunnlPopup {
                 tasks: [],
                 extensionEnabled: true,
                 blockedSites: [],
-                stats: { blockedCount: 0, analyzedCount: 0 }
+                stats: { blockedCount: 0, analyzedCount: 0 },
+                taskValidationEnabled: true
             };
         }
     }
@@ -83,6 +108,12 @@ class TunnlPopup {
         document.getElementById('api-key').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.saveApiKey();
         });
+
+        // Task validation toggle
+        document.getElementById('task-validation-toggle').addEventListener('change', (e) => {
+            this.settings.taskValidationEnabled = e.target.checked;
+            this.saveSettings();
+        });
     }
 
     async saveApiKey() {
@@ -119,12 +150,61 @@ class TunnlPopup {
             return;
         }
 
-        this.settings.tasks.push(taskText);
-        await this.saveSettings();
-        
-        taskInput.value = '';
-        this.showMessage('Task added!', 'success');
-        this.updateUI();
+        // Show loading state
+        const addButton = document.getElementById('add-task-btn');
+        const originalText = addButton.textContent;
+        addButton.textContent = 'Validating...';
+        addButton.disabled = true;
+
+        try {
+            // Validate task if validation is enabled
+            if (this.settings.taskValidationEnabled) {
+                const response = await this.sendMessageWithRetry({
+                    type: 'VALIDATE_TASK',
+                    taskText: taskText
+                }, 5, 200);
+
+                if (response.success) {
+                    const validation = response.result;
+                    if (!validation.isValid) {
+                        // Show validation error with suggestions
+                        let errorMessage = `Task needs improvement: ${validation.reason}`;
+                        if (validation.suggestions && validation.suggestions.length > 0) {
+                            errorMessage += '\n\nSuggestions:\n• ' + validation.suggestions.join('\n• ');
+                        }
+                        this.showMessage(errorMessage, 'error');
+                        return;
+                    } else {
+                        // Show validation success
+                        this.showMessage(`Task validated: ${validation.reason}`, 'success');
+                        
+                        // Show sample blocked sites if available
+                        if (validation.sampleBlockedSites && validation.sampleBlockedSites.length > 0) {
+                            this.showSampleBlockedSites(validation.sampleBlockedSites);
+                        }
+                    }
+                } else {
+                    console.error('Task validation failed:', response.error);
+                    this.showMessage('Task validation failed, but adding anyway', 'warning');
+                }
+            }
+
+            // Add the task
+            this.settings.tasks.push(taskText);
+            await this.saveSettings();
+            
+            taskInput.value = '';
+            this.showMessage('Task added!', 'success');
+            this.updateUI();
+
+        } catch (error) {
+            console.error('Error adding task:', error);
+            this.showMessage('Error adding task', 'error');
+        } finally {
+            // Restore button state
+            addButton.textContent = originalText;
+            addButton.disabled = false;
+        }
     }
 
     async removeTask(taskIndex) {
@@ -161,6 +241,7 @@ class TunnlPopup {
 
         // Populate form fields
         document.getElementById('api-key').value = this.settings.openaiApiKey;
+        document.getElementById('task-validation-toggle').checked = this.settings.taskValidationEnabled;
         // Task input is now individual, no need to populate
 
         // Stats are shown in Settings only
@@ -178,7 +259,21 @@ class TunnlPopup {
         this.settings.tasks.forEach((task, index) => {
             const taskItem = document.createElement('div');
             taskItem.className = 'task-item';
-            taskItem.textContent = `${index + 1}. ${task}`;
+            
+            const taskText = document.createElement('span');
+            taskText.className = 'task-item-text';
+            taskText.textContent = `${index + 1}. ${task}`;
+            
+            const removeButton = document.createElement('button');
+            removeButton.className = 'task-item-remove';
+            removeButton.textContent = '×';
+            removeButton.title = 'Remove task';
+            removeButton.addEventListener('click', () => {
+                this.removeTask(index);
+            });
+            
+            taskItem.appendChild(taskText);
+            taskItem.appendChild(removeButton);
             taskList.appendChild(taskItem);
         });
     }
@@ -202,12 +297,22 @@ class TunnlPopup {
 
     showMessage(text, type) {
         // Remove existing messages
-        const existingMessages = document.querySelectorAll('.success-message, .error-message');
+        const existingMessages = document.querySelectorAll('.success-message, .error-message, .warning-message');
         existingMessages.forEach(msg => msg.remove());
 
         const message = document.createElement('div');
-        message.className = type === 'success' ? 'success-message' : 'error-message';
-        message.textContent = text;
+        let className = 'error-message';
+        if (type === 'success') className = 'success-message';
+        else if (type === 'warning') className = 'warning-message';
+        
+        message.className = className;
+        
+        // Handle multi-line messages
+        if (text.includes('\n')) {
+            message.innerHTML = text.replace(/\n/g, '<br>');
+        } else {
+            message.textContent = text;
+        }
 
         // Insert message after the current section
         const currentSection = document.querySelector('.section:not([style*="display: none"])');
@@ -215,10 +320,46 @@ class TunnlPopup {
             currentSection.appendChild(message);
         }
 
-        // Auto-remove after 3 seconds
+        // Auto-remove after 5 seconds for longer messages, 3 seconds for short ones
+        const timeout = text.length > 100 ? 5000 : 3000;
         setTimeout(() => {
             message.remove();
-        }, 3000);
+        }, timeout);
+    }
+
+    showSampleBlockedSites(sampleSites) {
+        // Remove existing sample sites display
+        const existingSample = document.querySelector('.sample-blocked-sites');
+        if (existingSample) {
+            existingSample.remove();
+        }
+
+        const sampleContainer = document.createElement('div');
+        sampleContainer.className = 'sample-blocked-sites';
+        
+        const title = document.createElement('div');
+        title.className = 'sample-title';
+        title.textContent = 'Sample sites that would be blocked for latest task:';
+        
+        const sitesList = document.createElement('div');
+        sitesList.className = 'sample-sites-list';
+        
+        sampleSites.forEach(site => {
+            const siteItem = document.createElement('div');
+            siteItem.className = 'sample-site-item';
+            siteItem.textContent = site;
+            sitesList.appendChild(siteItem);
+        });
+        
+        sampleContainer.appendChild(title);
+        sampleContainer.appendChild(sitesList);
+        
+        // Insert after the current section
+        const currentSection = document.querySelector('.section:not([style*="display: none"])');
+        if (currentSection) {
+            currentSection.appendChild(sampleContainer);
+        }
+        // Do not auto-remove; keep visible until next validation or popup close
     }
 }
 

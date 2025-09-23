@@ -7,7 +7,8 @@ class TunnlBackground {
             tasks: [],
             extensionEnabled: true,
             blockedSites: [],
-            stats: { blockedCount: 0, analyzedCount: 0 }
+            stats: { blockedCount: 0, analyzedCount: 0 },
+            taskValidationEnabled: true
         };
         this.urlCache = new Map(); // Cache for analyzed URLs
         this.init();
@@ -30,7 +31,8 @@ class TunnlBackground {
             'extensionEnabled',
             'blockedSites',
             'stats',
-            'allowlist'
+            'allowlist',
+            'taskValidationEnabled'
         ]);
 
         this.settings = {
@@ -39,7 +41,8 @@ class TunnlBackground {
             extensionEnabled: result.extensionEnabled !== false,
             blockedSites: result.blockedSites || [],
             stats: result.stats || { blockedCount: 0, analyzedCount: 0 },
-            allowlist: Array.isArray(result.allowlist) ? result.allowlist : []
+            allowlist: Array.isArray(result.allowlist) ? result.allowlist : [],
+            taskValidationEnabled: result.taskValidationEnabled !== false
         };
     }
 
@@ -98,6 +101,15 @@ class TunnlBackground {
                 }
                 break;
 
+            case 'VALIDATE_TASK':
+                try {
+                    const result = await this.validateTask(message.taskText);
+                    sendResponse({ success: true, result });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
             case 'GET_SETTINGS':
                 sendResponse({ success: true, settings: this.settings });
                 break;
@@ -111,6 +123,41 @@ class TunnlBackground {
             case 'OPEN_SETTINGS':
                 chrome.runtime.openOptionsPage();
                 sendResponse({ success: true });
+                break;
+
+            case 'BLOCK_FEEDBACK':
+                try {
+                    const { url, reason, correct } = message.data || {};
+                    if (!this.settings.feedback) this.settings.feedback = [];
+                    this.settings.feedback.push({ url, reason, correct, timestamp: Date.now() });
+                    // Keep last 200 feedback entries
+                    if (this.settings.feedback.length > 200) {
+                        this.settings.feedback = this.settings.feedback.slice(-200);
+                    }
+                    await this.saveSettings();
+                    sendResponse({ success: true });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
+            case 'ADD_TO_ALLOWLIST':
+                try {
+                    let { host, url } = message;
+                    if (!host && url) {
+                        try { host = new URL(url).hostname; } catch {}
+                    }
+                    if (!host) throw new Error('host is required');
+                    const normalized = String(host).toLowerCase().trim();
+                    if (!Array.isArray(this.settings.allowlist)) this.settings.allowlist = [];
+                    if (!this.settings.allowlist.some(h => String(h).toLowerCase().trim() === normalized)) {
+                        this.settings.allowlist.push(normalized);
+                        await this.saveSettings();
+                    }
+                    sendResponse({ success: true, allowlist: this.settings.allowlist });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
                 break;
 
             default:
@@ -170,6 +217,39 @@ class TunnlBackground {
             return;
         }
 
+        // Honor temporary bypass from blocked page (10 minutes)
+        try {
+            const local = await chrome.storage.local.get(['temporaryUnblock']);
+            const bypass = local.temporaryUnblock;
+            if (bypass && bypass.url && bypass.until && Date.now() < bypass.until) {
+                // If current URL matches bypassed URL's origin or exact URL, allow
+                try {
+                    const bypassOrigin = new URL(bypass.url).origin;
+                    const currentOrigin = new URL(details.url).origin;
+                    if (details.url === bypass.url || bypassOrigin === currentOrigin) {
+                        return; // Do not analyze/block
+                    }
+                } catch {}
+            }
+        } catch {}
+
+        // Honor one-time bypass (single navigation)
+        try {
+            const local = await chrome.storage.local.get(['oneTimeBypass']);
+            const one = local.oneTimeBypass;
+            if (one && one.url) {
+                try {
+                    const oneOrigin = new URL(one.url).origin;
+                    const currentOrigin = new URL(details.url).origin;
+                    if (details.url === one.url || oneOrigin === currentOrigin) {
+                        // consume bypass
+                        await chrome.storage.local.remove('oneTimeBypass');
+                        return; // allow this navigation only
+                    }
+                } catch {}
+            }
+        } catch {}
+
         await this.analyzeAndBlockUrl(details.url, details.tabId);
     }
 
@@ -195,11 +275,114 @@ class TunnlBackground {
             await this.saveSettings();
 
             if (analysis.shouldBlock) {
-                await this.blockUrl(url, tabId, analysis.reason);
+                await this.notifyBlockSuggestion(url, analysis);
             }
 
         } catch (error) {
             console.error('Error analyzing URL:', error);
+        }
+    }
+
+    async validateTask(taskText) {
+        console.log('Validating task:', taskText);
+        if (!this.settings.taskValidationEnabled) {
+            console.log('Task validation disabled');
+            return { isValid: true, reason: 'Validation disabled', suggestions: [], sampleBlockedSites: [] };
+        }
+        
+        if (!this.settings.openaiApiKey) {
+            console.log('Extension not configured - API key missing');
+            return { isValid: false, reason: 'API key not configured', suggestions: [], sampleBlockedSites: [] };
+        }
+
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.settings.openaiApiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-3.5-turbo',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `You are a productivity expert helping users write effective task descriptions for a website blocker.
+
+Your job is to evaluate if a task description is well-written for efficient website blocking. A good task description should:
+1. Be specific and actionable (not too broad or vague)
+2. Clearly indicate what websites would be relevant
+3. Be focused enough that the AI can distinguish relevant vs irrelevant sites
+4. Not be so broad that it would allow distracting websites
+
+Examples of GOOD task descriptions:
+- "Research competitor pricing for SaaS tools"
+- "Write blog post about React hooks"
+- "Prepare presentation slides for Q4 sales meeting"
+- "Debug authentication issues in the login module"
+
+Examples of BAD task descriptions (too broad):
+- "Work on project"
+- "Be productive"
+- "Do research"
+- "Learn something new"
+
+Respond with a JSON object containing:
+- "isValid": boolean (true if the task is well-described for blocking)
+- "reason": string (explanation of why it's valid/invalid)
+- "suggestions": array of strings (specific suggestions to improve the task if invalid)
+- "confidence": number (0-1, how confident you are in this assessment)
+- "sampleBlockedSites": array of 5 strings (example websites that would be blocked for this task, like "facebook.com", "youtube.com", "reddit.com", etc.)`
+                        },
+                        {
+                            role: 'user',
+                            content: `Evaluate this task description: "${taskText}"`
+                        }
+                    ],
+                    temperature: 0.3,
+                    max_tokens: 300
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`OpenAI API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const content = data.choices[0].message.content;
+            console.log('Task validation response:', content);
+            
+            try {
+                const result = JSON.parse(content);
+                console.log('Parsed validation result:', result);
+                return {
+                    isValid: result.isValid || false,
+                    reason: result.reason || 'No reason provided',
+                    suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
+                    confidence: result.confidence || 0.5,
+                    sampleBlockedSites: Array.isArray(result.sampleBlockedSites) ? result.sampleBlockedSites : []
+                };
+            } catch (parseError) {
+                console.log('JSON parse error, using fallback:', parseError);
+                // Fallback if JSON parsing fails
+                return {
+                    isValid: !content.toLowerCase().includes('invalid') && !content.toLowerCase().includes('too broad'),
+                    reason: 'AI analysis completed',
+                    suggestions: [],
+                    confidence: 0.5,
+                    sampleBlockedSites: ['facebook.com', 'youtube.com', 'reddit.com', 'twitter.com', 'instagram.com']
+                };
+            }
+
+        } catch (error) {
+            console.error('Task validation API error:', error);
+            return {
+                isValid: true, // Default to allowing task if validation fails
+                reason: `Validation error: ${error.message}`,
+                suggestions: [],
+                confidence: 0,
+                sampleBlockedSites: []
+            };
         }
     }
 
@@ -288,40 +471,28 @@ class TunnlBackground {
         }
     }
 
-    async blockUrl(url, tabId, reason) {
+    async notifyBlockSuggestion(url, analysis) {
         try {
-            console.log('Blocking URL:', url, 'Reason:', reason);
-            // Add to blocked sites list
-            this.settings.blockedSites.push({
-                url: url,
-                timestamp: Date.now(),
-                reason: reason
-            });
+            const reason = analysis.reason || 'Potentially distracting';
+            const confidence = typeof analysis.confidence === 'number' ? Math.round(analysis.confidence * 100) : undefined;
+            const message = confidence != null ? `${reason} (confidence: ${confidence}%)` : reason;
 
-            // Keep only last 100 blocked sites
+            // Track as suggested block (not a strict block)
+            this.settings.blockedSites.push({ url, timestamp: Date.now(), reason: `Suggest: ${reason}` });
             if (this.settings.blockedSites.length > 100) {
                 this.settings.blockedSites = this.settings.blockedSites.slice(-100);
             }
-
-            // Update stats
-            this.settings.stats.blockedCount++;
             await this.saveSettings();
 
-            // Redirect to blocked page
-            await chrome.tabs.update(tabId, {
-                url: chrome.runtime.getURL('blocked.html') + '?url=' + encodeURIComponent(url) + '&reason=' + encodeURIComponent(reason)
+            await chrome.notifications.create(undefined, {
+                type: 'basic',
+                iconUrl: 'icon-128.png',
+                title: 'I would block this',
+                message: message,
+                contextMessage: new URL(url).hostname
             });
-
-            // Notify popup of stats update
-            chrome.runtime.sendMessage({
-                type: 'UPDATE_STATS',
-                stats: this.settings.stats
-            }).catch(() => {
-                // Ignore errors if popup is not open
-            });
-
         } catch (error) {
-            console.error('Error blocking URL:', error);
+            console.error('Error showing block suggestion notification:', error);
         }
     }
 

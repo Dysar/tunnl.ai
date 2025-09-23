@@ -6,6 +6,8 @@ A Chrome extension that uses AI to analyze websites and block distracting conten
 
 - 🤖 **AI-Powered Analysis**: Uses OpenAI's GPT to analyze websites and determine if they're related to your tasks
 - 📝 **Daily Task Management**: Set your tasks each day to help the AI understand what's relevant
+- ✅ **Smart Task Validation**: AI validates your task descriptions to ensure they're specific enough for effective blocking
+- 🎯 **Sample Blocked Sites**: Shows you 5 example websites that would be blocked for each task
 - 🚫 **Smart Blocking**: Automatically blocks distracting websites while allowing task-related content
 - ⏰ **Temporary Unblocking**: Unblock sites for 10 minutes when needed
 - 📊 **Focus Statistics**: Track how many sites have been blocked and analyzed
@@ -61,9 +63,28 @@ The extension will now:
 ### Daily Workflow
 
 1. **Morning Setup**: Open tunnl.ai and enter your tasks for the day
-2. **Automatic Protection**: The extension works in the background
-3. **Smart Blocking**: Distracting sites are blocked with explanations
-4. **Temporary Access**: Unblock sites for 10 minutes when needed
+2. **Task Validation**: AI validates your task descriptions to ensure they're specific enough for effective blocking
+3. **Automatic Protection**: The extension works in the background
+4. **Smart Blocking**: Distracting sites are blocked with explanations
+5. **Temporary Access**: Unblock sites for 10 minutes when needed
+
+### Writing Effective Tasks
+
+For the best blocking results, write specific and actionable tasks:
+
+**✅ Good Examples:**
+- "Research competitor pricing for SaaS tools"
+- "Write blog post about React hooks"
+- "Prepare presentation slides for Q4 sales meeting"
+- "Debug authentication issues in the login module"
+
+**❌ Avoid These (Too Broad):**
+- "Work on project"
+- "Be productive"
+- "Do research"
+- "Learn something new"
+
+The AI will validate your tasks and provide suggestions if they're too vague to enable effective website blocking. After adding a valid task, you'll see 5 sample websites that would be blocked for that specific task.
 
 ### Managing Blocked Sites
 
@@ -75,6 +96,7 @@ The extension will now:
 ### Settings
 
 - **Toggle extension** on/off
+- **Enable/disable task validation** to control AI task checking
 - **Update tasks** throughout the day
 - **View statistics** on blocked and analyzed sites
 - **Clear data** to reset everything
@@ -103,15 +125,22 @@ Short privacy note:
 - Model used by default: `gpt-3.5-turbo` (set in `background.js`).
 - Cost formula per request: `(prompt_tokens/1000 × input_price) + (completion_tokens/1000 × output_price)`.
 - Rough token sizes per analysis: ~700 prompt tokens (system + tasks + URL) and ~80 completion tokens.
+- Task validation + sample sites: ~450 prompt tokens and ~80 completion tokens per task validation.
 - Example pricing (verify your OpenAI plan): input $0.0005/1K tok, output $0.0015/1K tok.
 
 Estimated cost per request:
-- (0.7 × $0.0005) + (0.08 × $0.0015) ≈ $0.00035 + $0.00012 ≈ $0.00047
+- URL Analysis: (0.7 × $0.0005) + (0.08 × $0.0015) ≈ $0.00035 + $0.00012 ≈ $0.00047
+- Task Validation + Samples: (0.45 × $0.0005) + (0.08 × $0.0015) ≈ $0.00023 + $0.00012 ≈ $0.00035
 
 Estimated cost per hour (by browsing intensity):
 - 60 URLs/hour ≈ 60 × $0.00047 ≈ $0.028/hour
 - 80 URLs/hour ≈ ~$0.038/hour
 - 120 URLs/hour ≈ ~$0.056/hour
+
+Per Week = $0.028 * 40 = $1.2 
+$5 per month
+
+Note: Task validation only occurs when adding new tasks, so it adds minimal cost to your usage.
 
 Notes:
 - Your actual cost depends on how often pages are analyzed (caching reduces calls), model choice, and response length.

@@ -23,11 +23,25 @@
         </div>
 
         <div class="section" id="tasks-section" style="display: none;">
-            <h2>Current Tasks</h2>
+            <h2>Current Activities</h2>
+            
+            <div class="input-group" style="margin-bottom: 15px;">
+                <div class="status-indicator">
+                    <label for="task-validation-toggle">AI Activity Validation:</label>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="task-validation-toggle" checked>
+                        <label for="task-validation-toggle"></label>
+                    </div>
+                </div>
+                <small style="color: #666; font-size: 12px; margin-top: 5px;">
+                    Validate your activities with AI to ensure they're specific enough for effective blocking
+                </small>
+            </div>
+            
             <div class="task-input">
                 <div class="task-input-row">
-                    <input type="text" id="new-task-input" placeholder="Enter a new task">
-                    <button id="add-task-btn" class="btn btn-primary">Add Task</button>
+                    <input type="text" id="new-task-input" placeholder="Describe a current activity (e.g., coding backend, reading docs)">
+                    <button id="add-task-btn" class="btn btn-primary">Add Activity</button>
                 </div>
             </div>
             

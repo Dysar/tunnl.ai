@@ -411,19 +411,23 @@ Respond with a JSON object containing:
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a productivity assistant that helps users stay focused on their tasks. 
-                            Analyze the given URL and determine if it's related to the user's current tasks.
+                            content: `You are a productivity assistant that helps users stay focused on their activities. 
+                            Analyze the given URL and determine if it's related to the user's current activities.
                             
-                            User's tasks for today:
+                            User's activities for today:
                             ${this.settings.tasks.map((task, i) => `${i + 1}. ${task}`).join('\n')}
                             
                             Respond with a JSON object containing:
-                            - "shouldBlock": boolean (true if the website is not related to any task and is likely distracting)
+                            - "shouldBlock": boolean (true if the website is not directly related to any activity and is likely distracting)
                             - "reason": string (brief explanation of why it should/shouldn't be blocked)
                             - "confidence": number (0-1, how confident you are in this decision)
                             
-                            Consider blocking social media, entertainment, news sites, shopping sites, etc. unless they're directly related to the tasks.
-                            Be conservative - only block if you're reasonably confident the site is not task-related.`
+                            Guidelines:
+                            - Block games, gaming sites, social media, entertainment, news, shopping unless directly related to the activities
+                            - Only allow sites that are clearly and directly relevant to the specific activities listed
+                            - If the site is about a different topic/domain than the activities, block it
+                            - Be strict - err on the side of blocking to prevent distractions
+                            - Examples: If developing a Chrome plugin, block game strategy sites, social media, entertainment unless they're about Chrome development`
                         },
                         {
                             role: 'user',

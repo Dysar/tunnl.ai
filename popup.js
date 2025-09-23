@@ -320,8 +320,13 @@ class TunnlPopup {
             currentSection.appendChild(message);
         }
 
-        // Auto-remove after 5 seconds for longer messages, 3 seconds for short ones
-        const timeout = text.length > 100 ? 5000 : 3000;
+        // Auto-remove after longer time for validation errors with suggestions
+        let timeout = 3000;
+        if (type === 'error' && text.includes('Suggestions:')) {
+            timeout = 30000; // 30 seconds for validation errors with suggestions
+        } else if (text.length > 100) {
+            timeout = 5000; // 5 seconds for other longer messages
+        }
         setTimeout(() => {
             message.remove();
         }, timeout);

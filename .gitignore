@@ -1,3 +1,45 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node / JavaScript (in case you add tooling)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Env/config
+.env
+.env.*
+*.local
+
+# Misc
+Thumbs.db
+Icon?
+*.tgz
+*.zip
+
+# Chrome extension generated metadata (declarativeNetRequest compiled rules)
+_metadata/
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies

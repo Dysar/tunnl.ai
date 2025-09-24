@@ -288,13 +288,18 @@ class TunnlBackground {
 
     async analyzeAndBlockUrl(url, tabId) {
         try {
-             const taskKey = this.settings.currentTask?.text || '';
-             const cacheKey = `${url}||${taskKey}`;
-             if (this.urlCache.has(cacheKey)) {
+            const taskKey = this.settings.currentTask?.text || '';
+            const cacheKey = `${url}||${taskKey}`;
+            if (this.urlCache.has(cacheKey)) {
                 const cachedResult = this.urlCache.get(cacheKey);
-            // Check cache first
+                // Check cache first
                 if (cachedResult.shouldBlock) {
-                    await this.blockUrl(url, tabId, cachedResult.reason);
+                    //await this.blockUrl(url, tabId, cachedResult.reason);
+                    const analysis= {
+                        shouldBlock: true,
+                        reason: "From Cache: " + (cachedResult.reason || 'Potentially distracting'),
+                    }
+                    await this.notifyBlockSuggestion(url, analysis, tabId);
                 }
                 return;
             }
@@ -434,10 +439,10 @@ Respond with a JSON object containing:
             return { shouldBlock: false, reason: 'Allowlisted site' };
         }
 
-                 const currentTaskText = this.settings.currentTask?.text?.trim();
+        const currentTaskText = this.settings.currentTask?.text?.trim();
         if (!currentTaskText) {
-        // No current task selected; avoid overblocking
-        return { shouldBlock: false, reason: 'No current task selected' };
+            // No current task selected; avoid overblocking
+            return { shouldBlock: false, reason: 'No current task selected' };
         }
 
         try {
@@ -452,30 +457,32 @@ Respond with a JSON object containing:
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a productivity assistant that helps users stay focused on their tasks. 
-                            Analyze the given URL what you know about the contents of the website and determine if it's related to the user's current task.
-                            
-                            Current activity/task: "${currentTaskText}"
-                            
-                            Respond with a JSON object containing:
-                            - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
-                            - "reason": string (brief explanation of why it should/shouldn't be blocked)
-                            - "confidence": number (0-1, how confident you are in this decision)
-                            
-                            Guidelines:
-                            - look at each aspect of the URL (domain, path, query) to assess relevance
-                            - Only allow sites that could be relevant to the specific activities listed
-                            - If the site is about a different topic/domain than the activities, block it
-                            - Be strict - err on the side of blocking to prevent distractions
-                            - Tie-break rule: When task mentions a domain or exact URL, always allow.
-                            - Do not block search engines
-                            - if unsure, lean towards allowing
+                            content: `
+                            You are a productivity assistant that helps users stay focused on their tasks. 
+Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
 
-                            9) Confidence scoring:
-                                - 0.90–1.00: explicit mention in task, or clear topical & functional match.
-                                - 0.60–0.89: plausible relevance with multiple matching cues.
-                                - 0.30–0.59: mixed signals.
-                                - 0.00–0.29: clearly unrelated.
+Current activities/tasks: "${currentTaskText}"
+
+Respond with a JSON object containing:
+- "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
+- "reason": string (brief explanation of why it should/shouldn't be blocked)
+- "confidence": number (0-1, how confident you are in this decision)
+
+Guidelines:
+- Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
+- Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
+- Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
+- Examples of task-relevant platforms:
+  * Research tasks: Allow search engines, Wikipedia, academic sites, news sites, AND e-commerce sites (for product research)
+  * Shopping tasks: Allow e-commerce sites, price comparison sites, review sites
+  * Learning tasks: Allow educational platforms, documentation sites, tutorial sites
+- If a task mentions researching/buying/comparing a product, allow major platforms (Amazon, Google, eBay, etc.) even if the URL doesn't explicitly mention the product
+- Block sites that are clearly unrelated entertainment, social media (unless task-relevant), or different topic domains
+- Tie-break rule: When task mentions a specific domain or exact URL, always allow
+- Always allow: search engines, productivity tools, reference sites
+- If unsure about relevance, lean towards allowing (productivity over restriction)
+- Consider that users often need to navigate through general platform pages to reach specific content
+
                             `
                         },
                         {

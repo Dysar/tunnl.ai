@@ -422,13 +422,14 @@ Respond with a JSON object containing:
                             Respond with a JSON object containing:
                             - "shouldBlock": boolean (true if the website is not directly related to any activity and is likely distracting)
                             - "reason": string (brief explanation of why it should/shouldn't be blocked)
+                            - "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
                             - "confidence": number (0-1, how confident you are in this decision)
                             
                             Guidelines:
                             - Block games, gaming sites, social media, entertainment, news, shopping unless directly related to the activities
                             - Only allow sites that are clearly and directly relevant to the specific activities listed
                             - If the site is about a different topic/domain than the activities, block it
-                            - Be strict - err on the side of blocking to prevent distractions
+                            - Be moderately strict - only block clearly distracting sites that are obviously unrelated to your activities
                             - Examples: If developing a Chrome plugin, block game strategy sites, social media, entertainment unless they're about Chrome development`
                         },
                         {
@@ -470,6 +471,7 @@ Respond with a JSON object containing:
                 return {
                     shouldBlock,
                     reason: reason || 'No reason provided',
+                    activityUnderstanding: result.activityUnderstanding || 'No activity understanding provided',
                     confidence
                 };
             } catch (parseError) {
@@ -478,6 +480,7 @@ Respond with a JSON object containing:
                 return {
                     shouldBlock: content.toLowerCase().includes('block') && content.toLowerCase().includes('true'),
                     reason: 'AI analysis completed',
+                    activityUnderstanding: 'Unable to parse activity understanding',
                     confidence: 0.5
                 };
             }
@@ -487,6 +490,7 @@ Respond with a JSON object containing:
             return {
                 shouldBlock: false,
                 reason: `Error: ${error.message}`,
+                activityUnderstanding: 'Error occurred during analysis',
                 confidence: 0
             };
         }
@@ -495,6 +499,7 @@ Respond with a JSON object containing:
     async notifyBlockSuggestion(url, analysis, tabId) {
         try {
             const reason = analysis.reason || 'Potentially distracting';
+            const activityUnderstanding = analysis.activityUnderstanding || 'Unable to understand activities';
             const confidence = typeof analysis.confidence === 'number' ? Math.round(analysis.confidence * 100) : undefined;
             const message = confidence != null ? `${reason} (confidence: ${confidence}%)` : reason;
 
@@ -519,7 +524,8 @@ Respond with a JSON object containing:
                     await chrome.tabs.sendMessage(tabId, {
                         type: 'SHOW_BLOCK_TOAST',
                         url,
-                        message
+                        message,
+                        activityUnderstanding
                     });
                 }
             } catch (msgErr) {

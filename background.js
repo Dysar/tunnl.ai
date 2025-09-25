@@ -8,7 +8,8 @@ class TunnlBackground {
             extensionEnabled: true,
             blockedSites: [],
             stats: { blockedCount: 0, analyzedCount: 0 },
-            taskValidationEnabled: true
+            taskValidationEnabled: true,
+            currentTask: null,
         };
         this.urlCache = new Map(); // Cache for analyzed URLs
         this.lastSuggestionPopupMs = 0; // Debounce popup suggestions
@@ -33,12 +34,14 @@ class TunnlBackground {
             'blockedSites',
             'stats',
             'allowlist',
-            'taskValidationEnabled'
+            'taskValidationEnabled',
+            'currentTask',
         ]);
 
         this.settings = {
             openaiApiKey: result.openaiApiKey || '',
             tasks: result.tasks || [],
+            currentTask: result.currentTask || null,
             extensionEnabled: result.extensionEnabled !== false,
             blockedSites: result.blockedSites || [],
             stats: result.stats || { blockedCount: 0, analyzedCount: 0 },
@@ -71,7 +74,7 @@ class TunnlBackground {
             chrome.runtime.sendMessage({
                 type: 'TOGGLE_EXTENSION',
                 enabled: this.settings.extensionEnabled
-            }).catch(() => {});
+            }).catch(() => { });
         });
     }
 
@@ -86,6 +89,30 @@ class TunnlBackground {
 
     async handleMessage(message, sender, sendResponse) {
         switch (message.type) {
+            case 'CLEAR_CURRENT_TASK':
+                this.settings.currentTask = null;
+                await this.saveSettings();
+                sendResponse({ success: true });
+                break;
+
+            case 'SET_CURRENT_TASK':
+                try {
+                    const { index, text } = message; // allow either index into tasks[] or raw text
+                    let selected = null;
+                    if (typeof index === 'number' && this.settings.tasks[index]) {
+                        selected = { text: this.settings.tasks[index], index, setAt: Date.now() };
+                    } else if (typeof text === 'string' && text.trim()) {
+                        selected = { text: text.trim(), setAt: Date.now() };
+                    } else {
+                        throw new Error('Provide a valid task index or text');
+                    }
+                    this.settings.currentTask = selected;
+                    await this.saveSettings();
+                    sendResponse({ success: true, currentTask: this.settings.currentTask });
+                } catch (e) {
+                    sendResponse({ success: false, error: e.message });
+                }
+                break;
             case 'TOGGLE_EXTENSION':
                 this.settings.extensionEnabled = message.enabled;
                 await this.saveSettings();
@@ -142,12 +169,11 @@ class TunnlBackground {
                 }
                 break;
 
-
             case 'ADD_TO_ALLOWLIST':
                 try {
                     let { host, url } = message;
                     if (!host && url) {
-                        try { host = new URL(url).hostname; } catch {}
+                        try { host = new URL(url).hostname; } catch { }
                     }
                     if (!host) throw new Error('host is required');
                     const normalized = String(host).toLowerCase().trim();
@@ -177,6 +203,11 @@ class TunnlBackground {
     setupStorageListener() {
         chrome.storage.onChanged.addListener((changes, area) => {
             if (area !== 'sync') return;
+
+            if (changes.currentTask) {
+                this.settings.currentTask = changes.currentTask.newValue || null;
+                +               console.log('Current task updated:', this.settings.currentTask);
+            }
 
             if (changes.openaiApiKey) {
                 this.settings.openaiApiKey = changes.openaiApiKey.newValue || '';
@@ -213,7 +244,7 @@ class TunnlBackground {
 
     async handleNavigation(details) {
         if (!this.settings.extensionEnabled) return;
-        
+
         // Skip chrome://, devtools:// and extension URLs
         if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://') || details.url.startsWith('devtools://')) {
             return;
@@ -231,9 +262,9 @@ class TunnlBackground {
                     if (details.url === bypass.url || bypassOrigin === currentOrigin) {
                         return; // Do not analyze/block
                     }
-                } catch {}
+                } catch { }
             }
-        } catch {}
+        } catch { }
 
         // Honor one-time bypass (single navigation)
         try {
@@ -248,29 +279,36 @@ class TunnlBackground {
                         await chrome.storage.local.remove('oneTimeBypass');
                         return; // allow this navigation only
                     }
-                } catch {}
+                } catch { }
             }
-        } catch {}
+        } catch { }
 
         await this.analyzeAndBlockUrl(details.url, details.tabId);
     }
 
     async analyzeAndBlockUrl(url, tabId) {
         try {
-            // Check cache first
-            if (this.urlCache.has(url)) {
-                const cachedResult = this.urlCache.get(url);
+            const taskKey = this.settings.currentTask?.text || '';
+            const cacheKey = `${url}||${taskKey}`;
+            if (this.urlCache.has(cacheKey)) {
+                const cachedResult = this.urlCache.get(cacheKey);
+                // Check cache first
                 if (cachedResult.shouldBlock) {
-                    await this.blockUrl(url, tabId, cachedResult.reason);
+                    //await this.blockUrl(url, tabId, cachedResult.reason);
+                    const analysis= {
+                        shouldBlock: true,
+                        reason: "From Cache: " + (cachedResult.reason || 'Potentially distracting'),
+                    }
+                    await this.notifyBlockSuggestion(url, analysis, tabId);
                 }
                 return;
             }
 
             // Analyze URL with OpenAI
             const analysis = await this.analyzeUrl(url);
-            
+
             // Cache the result
-            this.urlCache.set(url, analysis);
+            this.urlCache.set(cacheKey, { ...analysis, timestamp: Date.now() });
 
             // Update stats
             this.settings.stats.analyzedCount++;
@@ -291,7 +329,7 @@ class TunnlBackground {
             console.log('Task validation disabled');
             return { isValid: true, reason: 'Validation disabled', suggestions: [], sampleBlockedSites: [] };
         }
-        
+
         if (!this.settings.openaiApiKey) {
             console.log('Extension not configured - API key missing');
             return { isValid: false, reason: 'API key not configured', suggestions: [], sampleBlockedSites: [] };
@@ -353,7 +391,7 @@ Respond with a JSON object containing:
             const data = await response.json();
             const content = data.choices[0].message.content;
             console.log('Task validation response:', content);
-            
+
             try {
                 const result = JSON.parse(content);
                 console.log('Parsed validation result:', result);
@@ -390,7 +428,7 @@ Respond with a JSON object containing:
 
     async analyzeUrl(url) {
         console.log('Analyzing URL:', url);
-        if (!this.settings.openaiApiKey || this.settings.tasks.length === 0) {
+        if (!this.settings.openaiApiKey) {
             console.log('Extension not configured - API key or tasks missing');
             return { shouldBlock: false, reason: 'Not configured' };
         }
@@ -399,6 +437,12 @@ Respond with a JSON object containing:
         if (this.isAllowlisted(url)) {
             console.log('URL is allowlisted:', url);
             return { shouldBlock: false, reason: 'Allowlisted site' };
+        }
+
+        const currentTaskText = this.settings.currentTask?.text?.trim();
+        if (!currentTaskText) {
+            // No current task selected; avoid overblocking
+            return { shouldBlock: false, reason: 'No current task selected' };
         }
 
         try {
@@ -413,24 +457,32 @@ Respond with a JSON object containing:
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a productivity assistant that helps users stay focused on their activities. 
-                            Analyze the given URL and determine if it's related to the user's current activities.
-                            
-                            User's activities for today:
-                            ${this.settings.tasks.map((task, i) => `${i + 1}. ${task}`).join('\n')}
-                            
-                            Respond with a JSON object containing:
-                            - "shouldBlock": boolean (true if the website is not directly related to any activity and is likely distracting)
-                            - "reason": string (brief explanation of why it should/shouldn't be blocked)
-                            - "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
-                            - "confidence": number (0-1, how confident you are in this decision)
-                            
-                            Guidelines:
-                            - Block games, gaming sites, social media, entertainment, news, shopping unless directly related to the activities
-                            - Only allow sites that are clearly and directly relevant to the specific activities listed
-                            - If the site is about a different topic/domain than the activities, block it
-                            - Be moderately strict - only block clearly distracting sites that are obviously unrelated to your activities
-                            - Examples: If developing a Chrome plugin, block game strategy sites, social media, entertainment unless they're about Chrome development`
+                            content: `
+                            You are a productivity assistant that helps users stay focused on their tasks. 
+Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
+
+Current activities/tasks: "${currentTaskText}"
+
+Respond with a JSON object containing:
+- "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
+- "reason": string (brief explanation of why it should/shouldn't be blocked)
+- "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
+- "confidence": number (0-1, how confident you are in this decision)
+
+Guidelines:
+- Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
+- Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
+- Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
+- Examples of task-relevant platforms:
+  * Research tasks: Allow search engines, Wikipedia, academic sites, news sites, AND e-commerce sites (for product research)
+  * Shopping tasks: Allow e-commerce sites, price comparison sites, review sites
+  * Learning tasks: Allow educational platforms, documentation sites, tutorial sites
+- If a task mentions researching/buying/comparing a product, allow major platforms (Amazon, Google, eBay, etc.) even if the URL doesn't explicitly mention the product
+- Block sites that are clearly unrelated entertainment, social media (unless task-relevant), or different topic domains
+- Tie-break rule: When task mentions a specific domain or exact URL, always allow
+- Always allow: search engines, productivity tools, reference sites
+- If unsure about relevance, lean towards allowing (productivity over restriction)
+- Consider that users often need to navigate through general platform pages to reach specific content`
                         },
                         {
                             role: 'user',
@@ -449,7 +501,7 @@ Respond with a JSON object containing:
             const data = await response.json();
             const content = data.choices[0].message.content;
             console.log('OpenAI response:', content);
-            
+
             try {
                 const result = JSON.parse(content);
                 console.log('Parsed result:', result);
@@ -574,7 +626,7 @@ Respond with a JSON object containing:
                 // Normalize entries like https://foo or *.bar.com
                 try {
                     if (needle.includes('://')) needle = new URL(needle).hostname.toLowerCase();
-                } catch {}
+                } catch { }
                 needle = needle.replace(/^\*\.?/, '').replace(/^\./, '');
                 return lowerUrl.includes(needle);
             });
@@ -587,7 +639,7 @@ Respond with a JSON object containing:
 // Initialize background script
 const tunnl = new TunnlBackground();
 
-    // Clean up cache every hour
-    setInterval(() => {
-        tunnl.cleanupCache();
-    }, 60 * 60 * 1000);
+// Clean up cache every hour
+setInterval(() => {
+    tunnl.cleanupCache();
+}, 60 * 60 * 1000);

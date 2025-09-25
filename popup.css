@@ -356,3 +356,52 @@ header p {
     font-weight: 500;
     white-space: nowrap;
 }
+
+.task-item-select {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  font-size: var(--sm);
+  cursor: pointer;
+  transition: transform .05s ease, border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+/* Current task banner */
+.current-task-banner {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+.current-task-banner #current-task {
+  font-size: var(--md);
+  color: var(--fg);
+  word-break: break-word;
+}
+#clear-current-task {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--hover);
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform .05s ease, background .15s ease, border-color .15s ease;
+}
+#clear-current-task:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+#clear-current-task:active:not(:disabled) { transform: translateY(1px); }
+#clear-current-task:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

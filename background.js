@@ -466,6 +466,7 @@ Current activities/tasks: "${currentTaskText}"
 Respond with a JSON object containing:
 - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
 - "reason": string (brief explanation of why it should/shouldn't be blocked)
+- "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
 - "confidence": number (0-1, how confident you are in this decision)
 
 Guidelines:
@@ -481,9 +482,7 @@ Guidelines:
 - Tie-break rule: When task mentions a specific domain or exact URL, always allow
 - Always allow: search engines, productivity tools, reference sites
 - If unsure about relevance, lean towards allowing (productivity over restriction)
-- Consider that users often need to navigate through general platform pages to reach specific content
-
-                            `
+- Consider that users often need to navigate through general platform pages to reach specific content`
                         },
                         {
                             role: 'user',
@@ -524,6 +523,7 @@ Guidelines:
                 return {
                     shouldBlock,
                     reason: reason || 'No reason provided',
+                    activityUnderstanding: result.activityUnderstanding || 'No activity understanding provided',
                     confidence
                 };
             } catch (parseError) {
@@ -532,6 +532,7 @@ Guidelines:
                 return {
                     shouldBlock: content.toLowerCase().includes('block') && content.toLowerCase().includes('true'),
                     reason: 'AI analysis completed',
+                    activityUnderstanding: 'Unable to parse activity understanding',
                     confidence: 0.5
                 };
             }
@@ -541,6 +542,7 @@ Guidelines:
             return {
                 shouldBlock: false,
                 reason: `Error: ${error.message}`,
+                activityUnderstanding: 'Error occurred during analysis',
                 confidence: 0
             };
         }
@@ -549,6 +551,7 @@ Guidelines:
     async notifyBlockSuggestion(url, analysis, tabId) {
         try {
             const reason = analysis.reason || 'Potentially distracting';
+            const activityUnderstanding = analysis.activityUnderstanding || 'Unable to understand activities';
             const confidence = typeof analysis.confidence === 'number' ? Math.round(analysis.confidence * 100) : undefined;
             const message = confidence != null ? `${reason} (confidence: ${confidence}%)` : reason;
 
@@ -573,7 +576,8 @@ Guidelines:
                     await chrome.tabs.sendMessage(tabId, {
                         type: 'SHOW_BLOCK_TOAST',
                         url,
-                        message
+                        message,
+                        activityUnderstanding
                     });
                 }
             } catch (msgErr) {

@@ -18,7 +18,7 @@ class TunnlContent {
         // Listen for background prompts
         chrome.runtime.onMessage.addListener((message) => {
             if (message && message.type === 'SHOW_BLOCK_TOAST') {
-                this.showBlockToast(message.url, message.message);
+                this.showBlockToast(message.url, message.message, message.activityUnderstanding);
             }
         });
     }
@@ -42,7 +42,7 @@ class TunnlContent {
         }
     }
 
-    showBlockToast(blockedUrl, reasonMessage) {
+    showBlockToast(blockedUrl, reasonMessage, activityUnderstanding) {
         try {
             // Avoid duplicate toasts
             if (document.getElementById('tunnl-block-toast')) return;
@@ -52,6 +52,7 @@ class TunnlContent {
             wrapper.innerHTML = `
                 <div class="tunnl-toast">
                     <div class="tunnl-toast-title">tunnl.ai blocked a distraction</div>
+                    <div class="tunnl-toast-activity">${this.escapeHtml(activityUnderstanding || 'Unable to understand your activities')}</div>
                     <div class="tunnl-toast-body">${this.escapeHtml(reasonMessage || 'Not related to your current tasks')}</div>
                     <div class="tunnl-toast-actions">
                         <button id="tunnl-dismiss-toast">Dismiss</button>
@@ -65,6 +66,7 @@ class TunnlContent {
                 @keyframes tunnl-fade-in { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
                 .tunnl-toast { background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); padding: 14px 14px 12px; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
                 .tunnl-toast-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+                .tunnl-toast-activity { font-size: 12px; color: #9ca3af; margin-bottom: 8px; font-style: italic; word-break: break-word; }
                 .tunnl-toast-body { font-size: 13px; line-height: 1.4; margin-bottom: 10px; word-break: break-word; }
                 .tunnl-toast-actions { display: flex; gap: 8px; justify-content: flex-end; }
                 .tunnl-toast-actions button { font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid #4b5563; background: #1f2937; color: #e5e7eb; cursor: pointer; }

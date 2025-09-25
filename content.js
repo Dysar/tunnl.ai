@@ -18,6 +18,11 @@ class TunnlContent {
         // Listen for background prompts
         chrome.runtime.onMessage.addListener((message) => {
             if (message && message.type === 'SHOW_BLOCK_TOAST') {
+                console.log('📨 Content script received toast message:', {
+                    url: message.url,
+                    message: message.message,
+                    activityUnderstanding: message.activityUnderstanding
+                });
                 this.showBlockToast(message.url, message.message, message.activityUnderstanding);
             }
         });
@@ -43,9 +48,18 @@ class TunnlContent {
     }
 
     showBlockToast(blockedUrl, reasonMessage, activityUnderstanding) {
+        console.log('🍞 Creating block toast:', {
+            blockedUrl,
+            reasonMessage,
+            activityUnderstanding
+        });
+
         try {
             // Avoid duplicate toasts
-            if (document.getElementById('tunnl-block-toast')) return;
+            if (document.getElementById('tunnl-block-toast')) {
+                console.log('⚠️ Toast already exists, skipping creation');
+                return;
+            }
 
             const wrapper = document.createElement('div');
             wrapper.id = 'tunnl-block-toast';
@@ -76,13 +90,26 @@ class TunnlContent {
             document.head.appendChild(style);
             document.body.appendChild(wrapper);
 
-            const dismiss = () => wrapper.remove();
+            console.log('✅ Toast created and added to page');
+
+            const dismiss = () => {
+                console.log('🗑️ Dismissing toast');
+                wrapper.remove();
+            };
+            
             document.getElementById('tunnl-dismiss-toast').addEventListener('click', dismiss);
 
-
             // Auto-dismiss after 2 minutes
-            setTimeout(() => { try { dismiss(); } catch {} }, 120000);
+            setTimeout(() => { 
+                try { 
+                    console.log('⏰ Auto-dismissing toast after 2 minutes');
+                    dismiss(); 
+                } catch {} 
+            }, 120000);
+            
+            console.log('⏰ Toast will auto-dismiss in 2 minutes');
         } catch (error) {
+            console.log('❌ Failed to create toast (likely CSP blocking):', error.message);
             // If CSP prevents injection, quietly give up
         }
     }

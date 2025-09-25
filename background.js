@@ -7,9 +7,13 @@ class TunnlBackground {
             tasks: [],
             extensionEnabled: true,
             blockedSites: [],
-            stats: { blockedCount: 0, analyzedCount: 0 }
+            stats: { blockedCount: 0, analyzedCount: 0 },
+            taskValidationEnabled: true,
+            currentTask: null,
         };
         this.urlCache = new Map(); // Cache for analyzed URLs
+        this.lastSuggestionPopupMs = 0; // Debounce popup suggestions
+        this.recentUrls = []; // Track last 5 URLs for context
         this.init();
     }
 
@@ -30,16 +34,20 @@ class TunnlBackground {
             'extensionEnabled',
             'blockedSites',
             'stats',
-            'allowlist'
+            'allowlist',
+            'taskValidationEnabled',
+            'currentTask',
         ]);
 
         this.settings = {
             openaiApiKey: result.openaiApiKey || '',
             tasks: result.tasks || [],
+            currentTask: result.currentTask || null,
             extensionEnabled: result.extensionEnabled !== false,
             blockedSites: result.blockedSites || [],
             stats: result.stats || { blockedCount: 0, analyzedCount: 0 },
-            allowlist: Array.isArray(result.allowlist) ? result.allowlist : []
+            allowlist: Array.isArray(result.allowlist) ? result.allowlist : [],
+            taskValidationEnabled: result.taskValidationEnabled !== false
         };
     }
 
@@ -67,7 +75,7 @@ class TunnlBackground {
             chrome.runtime.sendMessage({
                 type: 'TOGGLE_EXTENSION',
                 enabled: this.settings.extensionEnabled
-            }).catch(() => {});
+            }).catch(() => { });
         });
     }
 
@@ -82,6 +90,30 @@ class TunnlBackground {
 
     async handleMessage(message, sender, sendResponse) {
         switch (message.type) {
+            case 'CLEAR_CURRENT_TASK':
+                this.settings.currentTask = null;
+                await this.saveSettings();
+                sendResponse({ success: true });
+                break;
+
+            case 'SET_CURRENT_TASK':
+                try {
+                    const { index, text } = message; // allow either index into tasks[] or raw text
+                    let selected = null;
+                    if (typeof index === 'number' && this.settings.tasks[index]) {
+                        selected = { text: this.settings.tasks[index], index, setAt: Date.now() };
+                    } else if (typeof text === 'string' && text.trim()) {
+                        selected = { text: text.trim(), setAt: Date.now() };
+                    } else {
+                        throw new Error('Provide a valid task index or text');
+                    }
+                    this.settings.currentTask = selected;
+                    await this.saveSettings();
+                    sendResponse({ success: true, currentTask: this.settings.currentTask });
+                } catch (e) {
+                    sendResponse({ success: false, error: e.message });
+                }
+                break;
             case 'TOGGLE_EXTENSION':
                 this.settings.extensionEnabled = message.enabled;
                 await this.saveSettings();
@@ -92,6 +124,15 @@ class TunnlBackground {
             case 'ANALYZE_URL':
                 try {
                     const result = await this.analyzeUrl(message.url);
+                    sendResponse({ success: true, result });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
+            case 'VALIDATE_TASK':
+                try {
+                    const result = await this.validateTask(message.taskText);
                     sendResponse({ success: true, result });
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });
@@ -113,6 +154,41 @@ class TunnlBackground {
                 sendResponse({ success: true });
                 break;
 
+            case 'BLOCK_FEEDBACK':
+                try {
+                    const { url, reason, correct } = message.data || {};
+                    if (!this.settings.feedback) this.settings.feedback = [];
+                    this.settings.feedback.push({ url, reason, correct, timestamp: Date.now() });
+                    // Keep last 200 feedback entries
+                    if (this.settings.feedback.length > 200) {
+                        this.settings.feedback = this.settings.feedback.slice(-200);
+                    }
+                    await this.saveSettings();
+                    sendResponse({ success: true });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
+            case 'ADD_TO_ALLOWLIST':
+                try {
+                    let { host, url } = message;
+                    if (!host && url) {
+                        try { host = new URL(url).hostname; } catch { }
+                    }
+                    if (!host) throw new Error('host is required');
+                    const normalized = String(host).toLowerCase().trim();
+                    if (!Array.isArray(this.settings.allowlist)) this.settings.allowlist = [];
+                    if (!this.settings.allowlist.some(h => String(h).toLowerCase().trim() === normalized)) {
+                        this.settings.allowlist.push(normalized);
+                        await this.saveSettings();
+                    }
+                    sendResponse({ success: true, allowlist: this.settings.allowlist });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
             default:
                 sendResponse({ success: false, error: 'Unknown message type' });
         }
@@ -128,6 +204,11 @@ class TunnlBackground {
     setupStorageListener() {
         chrome.storage.onChanged.addListener((changes, area) => {
             if (area !== 'sync') return;
+
+            if (changes.currentTask) {
+                this.settings.currentTask = changes.currentTask.newValue || null;
+                +               console.log('Current task updated:', this.settings.currentTask);
+            }
 
             if (changes.openaiApiKey) {
                 this.settings.openaiApiKey = changes.openaiApiKey.newValue || '';
@@ -162,40 +243,165 @@ class TunnlBackground {
 
     // Removed handleTabUpdate - using only handleNavigation
 
-    async handleNavigation(details) {
-        if (!this.settings.extensionEnabled) return;
-        
-        // Skip chrome:// and extension URLs
-        if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://')) {
+    // Track recent URLs for context
+    addToRecentUrls(url) {
+        // Skip chrome://, devtools:// and extension URLs
+        if (url.startsWith('chrome://') || url.startsWith('chrome-extension://') || url.startsWith('devtools://')) {
+            console.log('🔒 Skipping system URL:', url);
             return;
         }
+        
+        const wasAlreadyTracked = this.recentUrls.includes(url);
+        
+        // Remove if already exists to avoid duplicates
+        this.recentUrls = this.recentUrls.filter(u => u !== url);
+        
+        // Add to beginning of array
+        this.recentUrls.unshift(url);
+        
+        // Keep only last 5 URLs
+        if (this.recentUrls.length > 5) {
+            this.recentUrls = this.recentUrls.slice(0, 5);
+        }
+        
+        console.log(`📝 URL History ${wasAlreadyTracked ? 'updated' : 'added'}:`, {
+            newUrl: url,
+            totalUrls: this.recentUrls.length,
+            recentUrls: this.recentUrls
+        });
+    }
+
+    async handleNavigation(details) {
+        console.log('🚀 Navigation detected:', {
+            url: details.url,
+            tabId: details.tabId,
+            frameId: details.frameId,
+            extensionEnabled: this.settings.extensionEnabled
+        });
+
+        if (!this.settings.extensionEnabled) {
+            console.log('⏸️ Extension disabled, skipping analysis');
+            return;
+        }
+
+        // Skip chrome://, devtools:// and extension URLs
+        if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://') || details.url.startsWith('devtools://')) {
+            console.log('🔒 Skipping system URL:', details.url);
+            return;
+        }
+
+        // Track this URL for context
+        this.addToRecentUrls(details.url);
+
+        // Honor temporary bypass from blocked page (10 minutes)
+        try {
+            const local = await chrome.storage.local.get(['temporaryUnblock']);
+            const bypass = local.temporaryUnblock;
+            if (bypass && bypass.url && bypass.until && Date.now() < bypass.until) {
+                // If current URL matches bypassed URL's origin or exact URL, allow
+                try {
+                    const bypassOrigin = new URL(bypass.url).origin;
+                    const currentOrigin = new URL(details.url).origin;
+                    if (details.url === bypass.url || bypassOrigin === currentOrigin) {
+                        console.log('⏰ Temporary bypass active:', {
+                            bypassUrl: bypass.url,
+                            currentUrl: details.url,
+                            until: new Date(bypass.until).toISOString()
+                        });
+                        return; // Do not analyze/block
+                    }
+                } catch { }
+            }
+        } catch { }
+
+        // Honor one-time bypass (single navigation)
+        try {
+            const local = await chrome.storage.local.get(['oneTimeBypass']);
+            const one = local.oneTimeBypass;
+            if (one && one.url) {
+                try {
+                    const oneOrigin = new URL(one.url).origin;
+                    const currentOrigin = new URL(details.url).origin;
+                    if (details.url === one.url || oneOrigin === currentOrigin) {
+                        console.log('🎯 One-time bypass used:', {
+                            bypassUrl: one.url,
+                            currentUrl: details.url
+                        });
+                        // consume bypass
+                        await chrome.storage.local.remove('oneTimeBypass');
+                        return; // allow this navigation only
+                    }
+                } catch { }
+            }
+        } catch { }
 
         await this.analyzeAndBlockUrl(details.url, details.tabId);
     }
 
     async analyzeAndBlockUrl(url, tabId) {
+        console.log('🔍 Starting URL analysis:', {
+            url,
+            tabId,
+            currentTask: this.settings.currentTask?.text || 'No current task',
+            recentUrls: this.recentUrls.length
+        });
+
         try {
-            // Check cache first
-            if (this.urlCache.has(url)) {
-                const cachedResult = this.urlCache.get(url);
+            const taskKey = this.settings.currentTask?.text || '';
+            const contextKey = this.recentUrls.slice(0, 3).join('|'); // Use first 3 URLs for context
+            const cacheKey = `${url}||${taskKey}||${contextKey}`;
+            
+            console.log('💾 Cache check:', {
+                cacheKey: cacheKey.substring(0, 100) + '...',
+                hasCache: this.urlCache.has(cacheKey)
+            });
+
+            if (this.urlCache.has(cacheKey)) {
+                const cachedResult = this.urlCache.get(cacheKey);
+                console.log('✅ Cache hit:', {
+                    shouldBlock: cachedResult.shouldBlock,
+                    reason: cachedResult.reason,
+                    timestamp: new Date(cachedResult.timestamp).toISOString()
+                });
+                
+                // Check cache first
                 if (cachedResult.shouldBlock) {
-                    await this.blockUrl(url, tabId, cachedResult.reason);
+                    const analysis = {
+                        shouldBlock: true,
+                        reason: "From Cache: " + (cachedResult.reason || 'Potentially distracting'),
+                        activityUnderstanding: cachedResult.activityUnderstanding || 'Cached analysis',
+                        confidence: cachedResult.confidence || 0.8
+                    };
+                    await this.notifyBlockSuggestion(url, analysis, tabId);
                 }
                 return;
             }
 
             // Analyze URL with OpenAI
+            console.log('🤖 Calling OpenAI API for analysis...');
             const analysis = await this.analyzeUrl(url);
             
+            console.log('🧠 AI Analysis result:', {
+                shouldBlock: analysis.shouldBlock,
+                reason: analysis.reason,
+                activityUnderstanding: analysis.activityUnderstanding,
+                confidence: analysis.confidence
+            });
+
             // Cache the result
-            this.urlCache.set(url, analysis);
+            this.urlCache.set(cacheKey, { ...analysis, timestamp: Date.now() });
+            console.log('💾 Cached analysis result');
 
             // Update stats
             this.settings.stats.analyzedCount++;
             await this.saveSettings();
+            console.log('📊 Stats updated - analyzed count:', this.settings.stats.analyzedCount);
 
             if (analysis.shouldBlock) {
-                await this.blockUrl(url, tabId, analysis.reason);
+                console.log('🚫 URL should be blocked, showing notification...');
+                await this.notifyBlockSuggestion(url, analysis, tabId);
+            } else {
+                console.log('✅ URL allowed, no action needed');
             }
 
         } catch (error) {
@@ -203,17 +409,16 @@ class TunnlBackground {
         }
     }
 
-    async analyzeUrl(url) {
-        console.log('Analyzing URL:', url);
-        if (!this.settings.openaiApiKey || this.settings.tasks.length === 0) {
-            console.log('Extension not configured - API key or tasks missing');
-            return { shouldBlock: false, reason: 'Not configured' };
+    async validateTask(taskText) {
+        console.log('Validating task:', taskText);
+        if (!this.settings.taskValidationEnabled) {
+            console.log('Task validation disabled');
+            return { isValid: true, reason: 'Validation disabled', suggestions: [], sampleBlockedSites: [] };
         }
 
-        // Check allowlist first
-        if (this.isAllowlisted(url)) {
-            console.log('URL is allowlisted:', url);
-            return { shouldBlock: false, reason: 'Allowlisted site' };
+        if (!this.settings.openaiApiKey) {
+            console.log('Extension not configured - API key missing');
+            return { isValid: false, reason: 'API key not configured', suggestions: [], sampleBlockedSites: [] };
         }
 
         try {
@@ -228,19 +433,157 @@ class TunnlBackground {
                     messages: [
                         {
                             role: 'system',
-                            content: `You are a productivity assistant that helps users stay focused on their tasks. 
-                            Analyze the given URL and determine if it's related to the user's current tasks.
-                            
-                            User's tasks for today:
-                            ${this.settings.tasks.map((task, i) => `${i + 1}. ${task}`).join('\n')}
-                            
-                            Respond with a JSON object containing:
-                            - "shouldBlock": boolean (true if the website is not related to any task and is likely distracting)
-                            - "reason": string (brief explanation of why it should/shouldn't be blocked)
-                            - "confidence": number (0-1, how confident you are in this decision)
-                            
-                            Consider blocking social media, entertainment, news sites, shopping sites, etc. unless they're directly related to the tasks.
-                            Be conservative - only block if you're reasonably confident the site is not task-related.`
+                            content: `You are a productivity expert helping users write effective task descriptions for a website blocker.
+
+Your job is to evaluate if a task description is well-written for efficient website blocking. A good task description should:
+1. Be specific and actionable (not too broad or vague)
+2. Clearly indicate what websites would be relevant
+3. Be focused enough that the AI can distinguish relevant vs irrelevant sites
+4. Not be so broad that it would allow distracting websites
+
+Examples of GOOD task descriptions:
+- "Research competitor pricing for SaaS tools"
+- "Write blog post about React hooks"
+- "Prepare presentation slides for Q4 sales meeting"
+- "Debug authentication issues in the login module"
+
+Examples of BAD task descriptions (too broad):
+- "Work on project"
+- "Be productive"
+- "Do research"
+- "Learn something new"
+
+Respond with a JSON object containing:
+- "isValid": boolean (true if the task is well-described for blocking)
+- "reason": string (explanation of why it's valid/invalid)
+- "suggestions": array of strings (specific suggestions to improve the task if invalid)
+- "confidence": number (0-1, how confident you are in this assessment)
+- "sampleBlockedSites": array of 5 strings (example websites that would be blocked for this task, like "facebook.com", "youtube.com", "reddit.com", etc.)`
+                        },
+                        {
+                            role: 'user',
+                            content: `Evaluate this task description: "${taskText}"`
+                        }
+                    ],
+                    temperature: 0.3,
+                    max_tokens: 300
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`OpenAI API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const content = data.choices[0].message.content;
+            console.log('Task validation response:', content);
+
+            try {
+                const result = JSON.parse(content);
+                console.log('Parsed validation result:', result);
+                return {
+                    isValid: result.isValid || false,
+                    reason: result.reason || 'No reason provided',
+                    suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
+                    confidence: result.confidence || 0.5,
+                    sampleBlockedSites: Array.isArray(result.sampleBlockedSites) ? result.sampleBlockedSites : []
+                };
+            } catch (parseError) {
+                console.log('JSON parse error, using fallback:', parseError);
+                // Fallback if JSON parsing fails
+                return {
+                    isValid: !content.toLowerCase().includes('invalid') && !content.toLowerCase().includes('too broad'),
+                    reason: 'AI analysis completed',
+                    suggestions: [],
+                    confidence: 0.5,
+                    sampleBlockedSites: ['facebook.com', 'youtube.com', 'reddit.com', 'twitter.com', 'instagram.com']
+                };
+            }
+
+        } catch (error) {
+            console.error('Task validation API error:', error);
+            return {
+                isValid: true, // Default to allowing task if validation fails
+                reason: `Validation error: ${error.message}`,
+                suggestions: [],
+                confidence: 0,
+                sampleBlockedSites: []
+            };
+        }
+    }
+
+    async analyzeUrl(url) {
+        console.log('🔍 Analyzing URL:', url);
+        
+        if (!this.settings.openaiApiKey) {
+            console.log('❌ Extension not configured - API key missing');
+            return { shouldBlock: false, reason: 'Not configured', activityUnderstanding: 'No API key', confidence: 0 };
+        }
+
+        // Check allowlist first
+        if (this.isAllowlisted(url)) {
+            console.log('✅ URL is allowlisted:', url);
+            return { shouldBlock: false, reason: 'Allowlisted site', activityUnderstanding: 'Site is in allowlist', confidence: 1.0 };
+        }
+
+        const currentTaskText = this.settings.currentTask?.text?.trim();
+        if (!currentTaskText) {
+            console.log('⚠️ No current task selected - allowing URL to avoid overblocking');
+            return { shouldBlock: false, reason: 'No current task selected', activityUnderstanding: 'No active task', confidence: 0.5 };
+        }
+
+        console.log('📋 Analysis context:', {
+            currentTask: currentTaskText,
+            recentUrls: this.recentUrls,
+            urlToAnalyze: url
+        });
+
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.settings.openaiApiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-3.5-turbo',
+                    messages: [
+                        {
+                            role: 'system',
+                             content: `
+                             You are a productivity assistant that helps users stay focused on their tasks. 
+ Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
+
+ Current activities/tasks: "${currentTaskText}"
+
+ Recent browsing context (last 5 URLs visited):
+ ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
+
+ Current URL to analyze: ${url}
+
+ Respond with a JSON object containing:
+- "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
+- "reason": string (brief explanation of why it should/shouldn't be blocked)
+- "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
+- "confidence": number (0-1, how confident you are in this decision)
+
+ Guidelines:
+ - Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
+ - Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
+ - Use the recent browsing context to understand the user's workflow and intent
+ - Consider browsing patterns: if user is researching a topic, allow related sites even if not directly mentioned in task
+ - Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
+ - Examples of task-relevant platforms:
+   * Research tasks: Allow search engines, Wikipedia, academic sites, news sites, AND e-commerce sites (for product research)
+   * Shopping tasks: Allow e-commerce sites, price comparison sites, review sites
+   * Learning tasks: Allow educational platforms, documentation sites, tutorial sites
+ - If a task mentions researching/buying/comparing a product, allow major platforms (Amazon, Google, eBay, etc.) even if the URL doesn't explicitly mention the product
+ - Block sites that are clearly unrelated entertainment, social media (unless task-relevant), or different topic domains
+ - Tie-break rule: When task mentions a specific domain or exact URL, always allow
+ - Always allow: search engines, productivity tools, reference sites
+ - If unsure about relevance, lean towards allowing (productivity over restriction)
+ - Consider that users often need to navigate through general platform pages to reach specific content
+ - Use recent URL context to detect if user is following a logical research/shopping/learning workflow`
                         },
                         {
                             role: 'user',
@@ -258,24 +601,49 @@ class TunnlBackground {
 
             const data = await response.json();
             const content = data.choices[0].message.content;
-            console.log('OpenAI response:', content);
-            
+            console.log('🤖 OpenAI raw response:', content);
+
             try {
                 const result = JSON.parse(content);
-                console.log('Parsed result:', result);
-                return {
-                    shouldBlock: result.shouldBlock || false,
-                    reason: result.reason || 'No reason provided',
-                    confidence: result.confidence || 0.5
+                console.log('✅ Successfully parsed AI response:', result);
+                
+                const reason = (result.reason || '').toString();
+                let confidence = typeof result.confidence === 'number' ? result.confidence : 0.5;
+                let shouldBlock = !!result.shouldBlock;
+
+                // Normalize contradictions: if reason clearly says unrelated/not relevant, prefer blocking
+                const lower = reason.toLowerCase();
+                const unrelatedSignals = [
+                    'not related', 'not relevant', 'unrelated', 'irrelevant',
+                    'distracting', 'off-topic', 'different topic', 'different domain'
+                ];
+                const hasUnrelatedSignal = unrelatedSignals.some(s => lower.includes(s));
+                if (!shouldBlock && hasUnrelatedSignal && confidence >= 0.6) {
+                    console.log('🔄 Overriding decision based on reason analysis - blocking due to unrelated signals');
+                    shouldBlock = true;
+                }
+
+                const finalResult = {
+                    shouldBlock,
+                    reason: reason || 'No reason provided',
+                    activityUnderstanding: result.activityUnderstanding || 'No activity understanding provided',
+                    confidence
                 };
+                
+                console.log('🎯 Final analysis decision:', finalResult);
+                return finalResult;
+                
             } catch (parseError) {
-                console.log('JSON parse error, using fallback:', parseError);
+                console.log('❌ JSON parse error, using fallback:', parseError);
                 // Fallback if JSON parsing fails
-                return {
+                const fallbackResult = {
                     shouldBlock: content.toLowerCase().includes('block') && content.toLowerCase().includes('true'),
-                    reason: 'AI analysis completed',
+                    reason: 'AI analysis completed (fallback)',
+                    activityUnderstanding: 'Unable to parse activity understanding',
                     confidence: 0.5
                 };
+                console.log('🔄 Using fallback result:', fallbackResult);
+                return fallbackResult;
             }
 
         } catch (error) {
@@ -283,63 +651,130 @@ class TunnlBackground {
             return {
                 shouldBlock: false,
                 reason: `Error: ${error.message}`,
+                activityUnderstanding: 'Error occurred during analysis',
                 confidence: 0
             };
         }
     }
 
-    async blockUrl(url, tabId, reason) {
+    async notifyBlockSuggestion(url, analysis, tabId) {
+        console.log('🚨 Preparing block notification:', {
+            url,
+            analysis,
+            tabId
+        });
+
         try {
-            console.log('Blocking URL:', url, 'Reason:', reason);
-            // Add to blocked sites list
-            this.settings.blockedSites.push({
-                url: url,
-                timestamp: Date.now(),
-                reason: reason
+            const reason = analysis.reason || 'Potentially distracting';
+            const activityUnderstanding = analysis.activityUnderstanding || 'Unable to understand activities';
+            const confidence = typeof analysis.confidence === 'number' ? Math.round(analysis.confidence * 100) : undefined;
+            const message = confidence != null ? `${reason} (confidence: ${confidence}%)` : reason;
+
+            console.log('📝 Block notification details:', {
+                reason,
+                activityUnderstanding,
+                confidence,
+                message
             });
 
-            // Keep only last 100 blocked sites
+            // Track as suggested block (not a strict block)
+            this.settings.blockedSites.push({ url, timestamp: Date.now(), reason: `Suggest: ${reason}` });
             if (this.settings.blockedSites.length > 100) {
                 this.settings.blockedSites = this.settings.blockedSites.slice(-100);
             }
-
-            // Update stats
-            this.settings.stats.blockedCount++;
             await this.saveSettings();
+            console.log('💾 Blocked sites updated, total count:', this.settings.blockedSites.length);
 
-            // Redirect to blocked page
-            await chrome.tabs.update(tabId, {
-                url: chrome.runtime.getURL('blocked.html') + '?url=' + encodeURIComponent(url) + '&reason=' + encodeURIComponent(reason)
-            });
+            // Debounce notifications to avoid spamming
+            const now = Date.now();
+            if (now - this.lastSuggestionPopupMs < 4000) {
+                console.log('⏱️ Debouncing notification (too soon since last one)');
+                return;
+            }
+            this.lastSuggestionPopupMs = now;
 
-            // Notify popup of stats update
-            chrome.runtime.sendMessage({
-                type: 'UPDATE_STATS',
-                stats: this.settings.stats
-            }).catch(() => {
-                // Ignore errors if popup is not open
-            });
 
+            // Ask content script to show an in-page prompt that the user can click
+            try {
+                if (typeof tabId === 'number') {
+                    console.log('📤 Sending toast message to content script:', {
+                        tabId,
+                        url,
+                        message,
+                        activityUnderstanding
+                    });
+                    
+                    await chrome.tabs.sendMessage(tabId, {
+                        type: 'SHOW_BLOCK_TOAST',
+                        url,
+                        message,
+                        activityUnderstanding
+                    });
+                    
+                    console.log('✅ Toast message sent successfully');
+                } else {
+                    console.log('⚠️ Invalid tabId, cannot send toast message');
+                }
+            } catch (msgErr) {
+                console.log('❌ Failed to send toast message:', msgErr.message);
+                // Content script may not be ready or site CSP blocks injection; ignore
+            }
+
+            // Nudge user via badge to click the extension action
+            try {
+                const previousBadge = await chrome.action.getBadgeText({});
+                const previousColor = await chrome.action.getBadgeBackgroundColor({});
+                
+                console.log('🔔 Setting notification badge:', {
+                    previousBadge,
+                    previousColor
+                });
+                
+                await chrome.action.setBadgeText({ text: '!' });
+                await chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+                
+                setTimeout(() => {
+                    // Restore previous badge state
+                    chrome.action.setBadgeText({ text: previousBadge || (this.settings.extensionEnabled ? 'ON' : 'OFF') });
+                    chrome.action.setBadgeBackgroundColor({ color: previousColor || (this.settings.extensionEnabled ? '#6b46c1' : '#9ca3af') });
+                    console.log('🔄 Badge restored to previous state');
+                }, 8000);
+            } catch (badgeErr) {
+                console.log('❌ Failed to set badge:', badgeErr.message);
+            }
         } catch (error) {
-            console.error('Error blocking URL:', error);
+            console.error('Error showing block suggestion toast:', error);
         }
     }
+
 
     // Clean up cache periodically
     cleanupCache() {
         const now = Date.now();
         const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+        let deletedCount = 0;
 
-        for (const [url, data] of this.urlCache.entries()) {
+        console.log('🧹 Starting cache cleanup...', {
+            cacheSize: this.urlCache.size,
+            maxAge: '24 hours'
+        });
+
+        for (const [cacheKey, data] of this.urlCache.entries()) {
             if (now - data.timestamp > maxAge) {
-                this.urlCache.delete(url);
+                this.urlCache.delete(cacheKey);
+                deletedCount++;
             }
         }
+
+        console.log('🧹 Cache cleanup completed:', {
+            deletedEntries: deletedCount,
+            remainingEntries: this.urlCache.size
+        });
     }
 
     // Allowlist: user-configured substrings plus core schemes
     isAllowlisted(url) {
-        const coreSchemes = ['chrome://', 'chrome-extension://'];
+        const coreSchemes = ['chrome://', 'chrome-extension://', 'devtools://'];
         try {
             const lowerUrl = url.toLowerCase();
             if (coreSchemes.some(s => lowerUrl.startsWith(s))) return true;
@@ -351,7 +786,7 @@ class TunnlBackground {
                 // Normalize entries like https://foo or *.bar.com
                 try {
                     if (needle.includes('://')) needle = new URL(needle).hostname.toLowerCase();
-                } catch {}
+                } catch { }
                 needle = needle.replace(/^\*\.?/, '').replace(/^\./, '');
                 return lowerUrl.includes(needle);
             });
@@ -364,7 +799,7 @@ class TunnlBackground {
 // Initialize background script
 const tunnl = new TunnlBackground();
 
-    // Clean up cache every hour
-    setInterval(() => {
-        tunnl.cleanupCache();
-    }, 60 * 60 * 1000);
+// Clean up cache every hour
+setInterval(() => {
+    tunnl.cleanupCache();
+}, 60 * 60 * 1000);

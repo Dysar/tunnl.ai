@@ -47,6 +47,14 @@ class TunnlBlockedPage {
             e.preventDefault();
             this.openHelp();
         });
+
+        // Feedback buttons
+        document.getElementById('feedback-correct-btn').addEventListener('click', () => {
+            this.sendFeedback(true);
+        });
+        document.getElementById('feedback-incorrect-btn').addEventListener('click', () => {
+            this.sendFeedback(false, { bypassOneTime: true });
+        });
     }
 
     async unblockTemporarily() {
@@ -65,6 +73,31 @@ class TunnlBlockedPage {
 
             // Redirect to the original URL
             window.location.href = blockedUrl;
+        }
+    }
+
+    async sendFeedback(correct, options = {}) {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const blockedUrl = urlParams.get('url');
+            const reason = urlParams.get('reason');
+
+            await chrome.runtime.sendMessage({
+                type: 'BLOCK_FEEDBACK',
+                data: { url: blockedUrl, reason, correct: !!correct }
+            });
+
+            if (options.bypassOneTime) {
+                // Store a one-time bypass and redirect immediately
+                await chrome.storage.local.set({ oneTimeBypass: { url: blockedUrl } });
+                window.location.href = blockedUrl;
+            }
+        } catch (error) {
+            console.error('Error sending feedback:', error);
+            if (options.bypassOneTime) {
+                await chrome.storage.local.set({ oneTimeBypass: { url: blockedUrl } });
+                window.location.href = blockedUrl;
+            }
         }
     }
 

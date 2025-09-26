@@ -583,7 +583,10 @@ Respond with a JSON object containing:
  - Always allow: search engines, productivity tools, reference sites
  - If unsure about relevance, lean towards allowing (productivity over restriction)
  - Consider that users often need to navigate through general platform pages to reach specific content
- - Use recent URL context to detect if user is following a logical research/shopping/learning workflow`
+ - Use recent URL context to detect if user is following a logical research/shopping/learning workflow
+ - If you cant associate websites with the current task, get the overall topic the user is working on from the current task and recent URLs, and only block sites that are clearly unrelated to that topic
+ - Do not block localhost, intranet, or internal company URLs
+ `
                         },
                         {
                             role: 'user',

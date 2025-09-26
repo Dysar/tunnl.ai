@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DamAI — Website Blocked</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg1:#0f172a; /* slate-900 */
+      --bg2:#111827; /* gray-900 */
+      --card:#0b1220; /* deep */
+      --muted:#9aa4b2;
+      --primary:#22d3ee; /* cyan-400 */
+      --primary-600:#0891b2; /* cyan-700 */
+      --accent:#a78bfa; /* violet-400 */
+      --danger:#ef4444;
+      --ring: rgba(34,211,238,.4);
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;
+      background: radial-gradient(1200px 800px at 80% -10%, rgba(167,139,250,.15), transparent 60%),
+                  radial-gradient(1000px 700px at -10% 110%, rgba(34,211,238,.12), transparent 60%),
+                  linear-gradient(180deg, var(--bg1), var(--bg2));
+      color:#e5e7eb;
+      display:grid;
+      place-items:center;
+      padding:28px;
+    }
+
+    .card{
+      width:min(900px, 92vw);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:24px;
+      box-shadow: 0 20px 45px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+      overflow:hidden;
+    }
+
+    .inner{
+      padding:42px clamp(22px, 4vw, 56px) 36px;
+      text-align:center;
+    }
+
+    .branding{
+      display:flex; align-items:center; justify-content:center; gap:12px;
+      margin-bottom:18px;
+    }
+    .logo{
+      height:38px; width:38px; border-radius:10px;
+      background: conic-gradient(from 220deg, var(--primary), var(--accent), var(--primary));
+      display:grid; place-items:center; font-weight:800; color:#0b1220; letter-spacing:.5px;
+      box-shadow:0 6px 18px rgba(34,211,238,.35);
+    }
+    h1{ margin:0; font-size: clamp(28px, 4.2vw, 42px); font-weight:700; letter-spacing:.4px; }
+
+    .subtitle{
+      margin:.1rem 0 1.25rem; color:var(--muted); font-weight:400; font-size:clamp(14px,1.6vw,16px);
+    }
+
+    .hero{
+      display:grid; place-items:center; margin:18px 0 8px;
+    }
+    .beaver{
+      width:min(360px, 65vw);
+      aspect-ratio:1/1; object-fit:contain; display:block;
+      filter: drop-shadow(0 20px 25px rgba(0,0,0,.35));
+      border-radius:16px;
+    }
+
+    .reason{ font-size:clamp(16px,1.9vw,18px); margin: 18px auto 26px; color:#eaeef3; }
+
+    .actions{ display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+    .btn{
+      --_bg: transparent; --_bd: rgba(255,255,255,.18); --_fg:#e7eef7;
+      appearance:none; border:1px solid var(--_bd); background:var(--_bg); color:var(--_fg);
+      padding:12px 18px; border-radius:14px; font-weight:600; letter-spacing:.2px; cursor:pointer;
+      transition:.22s ease; min-width:160px; backdrop-filter: blur(6px);
+    }
+    .btn:hover{ transform: translateY(-1px); box-shadow:0 8px 22px rgba(0,0,0,.35); }
+    .btn:focus{ outline:none; box-shadow:0 0 0 6px var(--ring); }
+
+    .btn-primary{ --_bg: linear-gradient(180deg, var(--primary), var(--primary-600)); --_bd: transparent; --_fg:#0b1220; }
+    .btn-ghost{ --_bg: rgba(255,255,255,.04); }
+
+    .footnote{ margin:18px 0 0; color:var(--muted); font-size:13px; }
+    .footnote a{ color:#bfeaff; text-decoration:none; border-bottom:1px dashed rgba(191,234,255,.5); }
+    .footnote a:hover{ border-color:transparent; }
+
+    /* subtle divider */
+    .divider{ height:1px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); margin:18px 0 10px; }
+
+    /* Responsive tighten */
+    @media (max-width:420px){
+      .inner{ padding:28px 18px 24px; }
+      .btn{ min-width:140px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <div class="inner">
+      <div class="branding" aria-label="Brand">
+        <div class="logo" aria-hidden="true">DA</div>
+        <h1>DamAI</h1>
+      </div>
+      <p class="subtitle">Website was blocked because:</p>
+
+      <div class="hero">
+        <!-- Place the provided image file in the same folder as this HTML, or update the src path accordingly -->
+        <img src="assets/beaver.png" alt="Beaver holding a sign that reads 'Website Blocked'" class="beaver" />
+      </div>
+
+      <p class="reason">This site was flagged by our safety filters (e.g., suspicious content, malware risk, or policy violation).</p>
+
+      <div class="actions">
+        <button class="btn btn-ghost" id="goBackBtn" type="button">Go Back</button>
+        <a class="btn btn-primary" id="reportBtn" href="mailto:support@damai.example?subject=Wrongly%20assessed%20block&body=URL:%20%3Cpaste%20here%3E%0AReason%20why%20it%20should%20not%20be%20blocked:%20" role="button">Wrongly assessed</a>
+      </div>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <p class="footnote">I don’t care, <a id="continueLink" href="#">just continue to the site anywhere</a>.</p>
+    </div>
+  </main>
+
+  <script>
+    // Basic interactions — adjust to your routing / product needs
+    document.getElementById('goBackBtn').addEventListener('click', () => {
+      if (history.length > 1) history.back();
+      else window.location.href = '/';
+    });
+
+    document.getElementById('continueLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      // Replace with your bypass logic or destination URL
+      // Example: window.location.href = new URLSearchParams(location.search).get('dest') || 'https://example.com';
+      alert('Bypass not configured. Hook this link to your allowlist or destination URL.');
+    });
+  </script>
+</body>
+</html>

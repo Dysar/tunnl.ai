@@ -170,6 +170,16 @@ class TunnlBackground {
                 }
                 break;
 
+            case 'VALIDATE_API_KEY':
+                try {
+                    const { apiKey } = message;
+                    const validation = await this.validateApiKey(apiKey);
+                    sendResponse({ success: true, validation });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
             case 'ADD_TO_ALLOWLIST':
                 try {
                     let { host, url } = message;
@@ -422,18 +432,19 @@ class TunnlBackground {
         }
 
         try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.settings.openaiApiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-3.5-turbo',
-                    messages: [
-                        {
-                            role: 'system',
-                            content: `You are a productivity expert helping users write effective task descriptions for a website blocker.
+            const response = await this.retryRequest(async () => {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.settings.openaiApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-3.5-turbo',
+                        messages: [
+                            {
+                                role: 'system',
+                                content: `You are a productivity expert helping users write effective task descriptions for a website blocker.
 
 Your job is to evaluate if a task description is well-written for efficient website blocking. A good task description should:
 1. Be specific and actionable (not too broad or vague)
@@ -456,23 +467,25 @@ Examples of BAD task descriptions (too broad):
 Respond with a JSON object containing:
 - "isValid": boolean (true if the task is well-described for blocking)
 - "reason": string (explanation of why it's valid/invalid)
-- "suggestions": array of strings (specific suggestions to improve the task if invalid)
-- "confidence": number (0-1, how confident you are in this assessment)
-- "sampleBlockedSites": array of 5 strings (example websites that would be blocked for this task, like "facebook.com", "youtube.com", "reddit.com", etc.)`
-                        },
-                        {
-                            role: 'user',
-                            content: `Evaluate this task description: "${taskText}"`
-                        }
-                    ],
-                    temperature: 0.3,
-                    max_tokens: 300
-                })
-            });
+                                - "suggestions": array of strings (specific suggestions to improve the task if invalid)
+                                - "confidence": number (0-1, how confident you are in this assessment)`
+                            },
+                            {
+                                role: 'user',
+                                content: `Evaluate this task description: "${taskText}"`
+                            }
+                        ],
+                        temperature: 0.3,
+                        max_tokens: 300
+                    })
+                });
 
-            if (!response.ok) {
-                throw new Error(`OpenAI API error: ${response.status}`);
-            }
+                if (!response.ok) {
+                    throw new Error(`OpenAI API error: ${response.status}`);
+                }
+
+                return response;
+            }, 3, 1000);
 
             const data = await response.json();
             const content = data.choices[0].message.content;
@@ -485,8 +498,7 @@ Respond with a JSON object containing:
                     isValid: result.isValid || false,
                     reason: result.reason || 'No reason provided',
                     suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
-                    confidence: result.confidence || 0.5,
-                    sampleBlockedSites: Array.isArray(result.sampleBlockedSites) ? result.sampleBlockedSites : []
+                    confidence: result.confidence || 0.5
                 };
             } catch (parseError) {
                 console.log('JSON parse error, using fallback:', parseError);
@@ -495,8 +507,7 @@ Respond with a JSON object containing:
                     isValid: !content.toLowerCase().includes('invalid') && !content.toLowerCase().includes('too broad'),
                     reason: 'AI analysis completed',
                     suggestions: [],
-                    confidence: 0.5,
-                    sampleBlockedSites: ['facebook.com', 'youtube.com', 'reddit.com', 'twitter.com', 'instagram.com']
+                    confidence: 0.5
                 };
             }
 
@@ -506,8 +517,7 @@ Respond with a JSON object containing:
                 isValid: true, // Default to allowing task if validation fails
                 reason: `Validation error: ${error.message}`,
                 suggestions: [],
-                confidence: 0,
-                sampleBlockedSites: []
+                confidence: 0
             };
         }
     }
@@ -539,27 +549,28 @@ Respond with a JSON object containing:
         });
 
         try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.settings.openaiApiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-3.5-turbo',
-                    messages: [
-                        {
-                            role: 'system',
-                             content: `
-                             You are a productivity assistant that helps users stay focused on their tasks. 
- Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
+            const response = await this.retryRequest(async () => {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.settings.openaiApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-3.5-turbo',
+                        messages: [
+                            {
+                                role: 'system',
+                                 content: `
+                                 You are a productivity assistant that helps users stay focused on their tasks. 
+             Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
 
- Current activities/tasks: "${currentTaskText}"
+             Current activities/tasks: "${currentTaskText}"
 
- Recent browsing context (last 5 URLs visited):
- ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
+             Recent browsing context (last 5 URLs visited):
+             ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
 
- Current URL to analyze: ${url}
+             Current URL to analyze: ${url}
 
  Respond with a JSON object containing:
 - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
@@ -596,11 +607,14 @@ Respond with a JSON object containing:
                     temperature: 0.3,
                     max_tokens: 200
                 })
-            });
+                });
 
-            if (!response.ok) {
-                throw new Error(`OpenAI API error: ${response.status}`);
-            }
+                if (!response.ok) {
+                    throw new Error(`OpenAI API error: ${response.status}`);
+                }
+
+                return response;
+            }, 3, 1000);
 
             const data = await response.json();
             const content = data.choices[0].message.content;
@@ -750,6 +764,94 @@ Respond with a JSON object containing:
         }
     }
 
+
+    // Validate OpenAI API key
+    async validateApiKey(apiKey) {
+        console.log('🔑 Validating API key...');
+        
+        if (!apiKey || !apiKey.startsWith('sk-')) {
+            return { valid: false, error: 'Invalid API key format. Must start with "sk-"' };
+        }
+
+        try {
+            const response = await this.retryRequest(async () => {
+                const response = await fetch('https://api.openai.com/v1/models', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`
+                    }
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        throw new Error('Invalid API key - authentication failed');
+                    } else if (response.status === 429) {
+                        throw new Error('Rate limit exceeded - API key is valid but temporarily limited');
+                    } else if (response.status === 403) {
+                        throw new Error('API key lacks required permissions');
+                    } else {
+                        throw new Error(`API error: ${response.status}`);
+                    }
+                }
+
+                return response;
+            }, 2, 1000); // Fewer retries for validation
+
+            const data = await response.json();
+            console.log('✅ API key validation successful');
+            
+            return { 
+                valid: true, 
+                models: data.data?.length || 0,
+                message: `API key is valid. Found ${data.data?.length || 0} available models.`
+            };
+
+        } catch (error) {
+            console.log('❌ API key validation failed:', error.message);
+            return { 
+                valid: false, 
+                error: error.message 
+            };
+        }
+    }
+
+    // Retry utility for network requests
+    async retryRequest(requestFn, maxRetries = 3, baseDelay = 1000) {
+        let lastError;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`🔄 Attempt ${attempt}/${maxRetries} for network request`);
+                const result = await requestFn();
+                if (attempt > 1) {
+                    console.log(`✅ Request succeeded on attempt ${attempt}`);
+                }
+                return result;
+            } catch (error) {
+                lastError = error;
+                console.log(`❌ Attempt ${attempt} failed:`, error.message);
+                
+                // Don't retry on certain errors
+                if (error.message.includes('401') || error.message.includes('403') || error.message.includes('429')) {
+                    console.log('🚫 Not retrying due to auth/rate limit error');
+                    throw error;
+                }
+                
+                // Don't retry on the last attempt
+                if (attempt === maxRetries) {
+                    console.log(`💥 All ${maxRetries} attempts failed`);
+                    break;
+                }
+                
+                // Exponential backoff with jitter
+                const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+                console.log(`⏳ Waiting ${Math.round(delay)}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        
+        throw lastError;
+    }
 
     // Clean up cache periodically
     cleanupCache() {

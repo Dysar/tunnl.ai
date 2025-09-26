@@ -323,38 +323,13 @@ header p {
     font-size: 14px;
 }
 
-.sample-blocked-sites {
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    padding: 12px;
+.info-message {
+    background: #d1ecf1;
+    color: #0c5460;
+    padding: 10px;
+    border-radius: 6px;
     margin-top: 10px;
-    font-size: 13px;
-}
-
-.sample-title {
-    font-weight: 600;
-    color: #495057;
-    margin-bottom: 8px;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.sample-sites-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.sample-site-item {
-    background: #e53e3e;
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    white-space: nowrap;
+    font-size: 14px;
 }
 
 .task-item-select {

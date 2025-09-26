@@ -123,10 +123,35 @@ class TunnlOptions {
             return;
         }
 
-        this.settings.openaiApiKey = apiKey;
-        await this.saveSettings();
-        
-        this.showMessage('API key saved successfully!', 'success');
+        // Show validation message
+        this.showMessage('Validating API key...', 'info');
+
+        try {
+            // Validate the API key
+            const response = await chrome.runtime.sendMessage({
+                type: 'VALIDATE_API_KEY',
+                apiKey: apiKey
+            });
+
+            if (response.success && response.validation) {
+                const validation = response.validation;
+                
+                if (validation.valid) {
+                    // Save the API key
+                    this.settings.openaiApiKey = apiKey;
+                    await this.saveSettings();
+                    
+                    this.showMessage(`✅ ${validation.message}`, 'success');
+                } else {
+                    this.showMessage(`❌ API key validation failed: ${validation.error}`, 'error');
+                }
+            } else {
+                this.showMessage('❌ Failed to validate API key. Please try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Error validating API key:', error);
+            this.showMessage('❌ Error validating API key. Please check your connection and try again.', 'error');
+        }
     }
 
     async saveTasks() {
@@ -352,7 +377,10 @@ class TunnlOptions {
         container.innerHTML = '';
 
         const message = document.createElement('div');
-        message.className = `message ${type}`;
+        let className = 'message error';
+        if (type === 'success') className = 'message success';
+        else if (type === 'info') className = 'message info';
+        message.className = className;
         message.textContent = text;
         container.appendChild(message);
 

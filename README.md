@@ -7,7 +7,6 @@ A Chrome extension that uses AI to analyze websites and block distracting conten
 - 🤖 **AI-Powered Analysis**: Uses OpenAI's GPT to analyze websites and determine if they're related to your tasks
 - 📝 **Daily Task Management**: Set your tasks each day to help the AI understand what's relevant
 - ✅ **Smart Task Validation**: AI validates your task descriptions to ensure they're specific enough for effective blocking
-- 🎯 **Sample Blocked Sites**: Shows you 5 example websites that would be blocked for each task
 - 🚫 **Smart Blocking**: Automatically blocks distracting websites while allowing task-related content
 - ⏰ **Temporary Unblocking**: Unblock sites for 10 minutes when needed
 - 📊 **Focus Statistics**: Track how many sites have been blocked and analyzed
@@ -84,7 +83,7 @@ For the best blocking results, write specific and actionable tasks:
 - "Do research"
 - "Learn something new"
 
-The AI will validate your tasks and provide suggestions if they're too vague to enable effective website blocking. After adding a valid task, you'll see 5 sample websites that would be blocked for that specific task.
+The AI will validate your tasks and provide suggestions if they're too vague to enable effective website blocking.
 
 ### Managing Blocked Sites
 
@@ -96,7 +95,6 @@ The AI will validate your tasks and provide suggestions if they're too vague to 
 ### Settings
 
 - **Toggle extension** on/off
-- **Enable/disable task validation** to control AI task checking
 - **Update tasks** throughout the day
 - **View statistics** on blocked and analyzed sites
 - **Clear data** to reset everything

@@ -114,14 +114,6 @@ class TunnlPopup {
             });
         }
 
-        // Task validation toggle
-        const toggle = document.getElementById('task-validation-toggle');
-        if (toggle) {
-            toggle.addEventListener('change', (e) => {
-                this.settings.taskValidationEnabled = e.target.checked;
-                this.saveSettings();
-            });
-        }
 
         // Clear current task button (created dynamically, but support if it exists initially)
         const clearBtn = document.getElementById('clear-current-task');
@@ -142,11 +134,36 @@ class TunnlPopup {
             return;
         }
 
-        this.settings.openaiApiKey = apiKey;
-        await this.saveSettings();
+        // Show validation message
+        this.showMessage('Validating API key...', 'info');
 
-        this.showMessage('API key saved successfully!', 'success');
-        this.updateUI();
+        try {
+            // Validate the API key
+            const response = await this.sendMessageWithRetry({
+                type: 'VALIDATE_API_KEY',
+                apiKey: apiKey
+            });
+
+            if (response.success && response.validation) {
+                const validation = response.validation;
+                
+                if (validation.valid) {
+                    // Save the API key
+                    this.settings.openaiApiKey = apiKey;
+                    await this.saveSettings();
+                    
+                    this.showMessage(`✅ ${validation.message}`, 'success');
+                    this.updateUI();
+                } else {
+                    this.showMessage(`❌ API key validation failed: ${validation.error}`, 'error');
+                }
+            } else {
+                this.showMessage('❌ Failed to validate API key. Please try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Error validating API key:', error);
+            this.showMessage('❌ Error validating API key. Please check your connection and try again.', 'error');
+        }
     }
 
     async addTask() {
@@ -189,9 +206,6 @@ class TunnlPopup {
                         return;
                     } else {
                         this.showMessage(`Task validated: ${validation.reason}`, 'success');
-                        if (validation.sampleBlockedSites && validation.sampleBlockedSites.length > 0) {
-                            this.showSampleBlockedSites(validation.sampleBlockedSites);
-                        }
                     }
                 } else {
                     console.error('Task validation failed:', response.error);
@@ -251,8 +265,6 @@ class TunnlPopup {
         const apiKeyEl = document.getElementById('api-key');
         if (apiKeyEl) apiKeyEl.value = this.settings.openaiApiKey || '';
 
-        const valToggle = document.getElementById('task-validation-toggle');
-        if (valToggle) valToggle.checked = !!this.settings.taskValidationEnabled;
 
         // Render current task banner
         this.renderCurrentTaskBanner();
@@ -420,13 +432,14 @@ class TunnlPopup {
 
     showMessage(text, type) {
         // Remove existing messages
-        const existingMessages = document.querySelectorAll('.success-message, .error-message, .warning-message');
+        const existingMessages = document.querySelectorAll('.success-message, .error-message, .warning-message, .info-message');
         existingMessages.forEach(msg => msg.remove());
 
         const message = document.createElement('div');
         let className = 'error-message';
         if (type === 'success') className = 'success-message';
         else if (type === 'warning') className = 'warning-message';
+        else if (type === 'info') className = 'info-message';
 
         message.className = className;
 
@@ -450,35 +463,6 @@ class TunnlPopup {
         }, timeout);
     }
 
-    showSampleBlockedSites(sampleSites) {
-        const existingSample = document.querySelector('.sample-blocked-sites');
-        if (existingSample) {
-            existingSample.remove();
-        }
-
-        const sampleContainer = document.createElement('div');
-        sampleContainer.className = 'sample-blocked-sites';
-
-        const title = document.createElement('div');
-        title.className = 'sample-title';
-        title.textContent = 'Sample sites that would be blocked for latest task:';
-
-        const sitesList = document.createElement('div');
-        sitesList.className = 'sample-sites-list';
-
-        sampleSites.forEach(site => {
-            const siteItem = document.createElement('div');
-            siteItem.className = 'sample-site-item';
-            siteItem.textContent = site;
-            sitesList.appendChild(siteItem);
-        });
-
-        sampleContainer.appendChild(title);
-        sampleContainer.appendChild(sitesList);
-
-        const currentSection = document.querySelector('.section:not([style*="display: none"])') || document.getElementById('tasks-section') || document.body;
-        currentSection.appendChild(sampleContainer);
-    }
 }
 
 // Initialize popup when DOM is loaded

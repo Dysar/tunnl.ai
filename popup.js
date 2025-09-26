@@ -2,6 +2,9 @@
 
 class TunnlPopup {
     constructor() {
+        this.currentView = 'main'; // 'main' or 'detail'
+        this.selectedTaskId = null;
+        this.lockEndTime = null;
         this.init();
     }
 
@@ -87,7 +90,7 @@ class TunnlPopup {
         }
 
         // Add task
-        const addBtn = document.getElementById('add-task-btn');
+        const addBtn = document.getElementById('add-task');
         if (addBtn) {
             addBtn.addEventListener('click', () => this.addTask());
         }
@@ -101,9 +104,34 @@ class TunnlPopup {
         }
 
         // Settings button
-        const settingsBtn = document.getElementById('settings-btn');
+        const settingsBtn = document.getElementById('open-options');
         if (settingsBtn) {
             settingsBtn.addEventListener('click', () => this.openSettings());
+        }
+
+        // New design event listeners
+        // Back button in task detail view
+        const backBtn = document.getElementById('back-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => this.showMainView());
+        }
+
+        // Timer buttons
+        const timerBtns = document.querySelectorAll('.timer-btn');
+        timerBtns.forEach(btn => {
+            btn.addEventListener('click', () => this.selectTimer(btn));
+        });
+
+        // Delete task button
+        const deleteBtn = document.getElementById('delete-task');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => this.deleteTask());
+        }
+
+        // Custom minutes input
+        const customMinutes = document.getElementById('custom-minutes');
+        if (customMinutes) {
+            customMinutes.addEventListener('input', () => this.handleCustomTimer());
         }
 
         // Enter key handlers
@@ -180,10 +208,10 @@ class TunnlPopup {
         }
 
         // Show loading state
-        const addButton = document.getElementById('add-task-btn');
+        const addButton = document.getElementById('add-task');
         const originalText = addButton ? addButton.textContent : '';
         if (addButton) {
-            addButton.textContent = 'Validating...';
+            addButton.textContent = '...';
             addButton.disabled = true;
         }
 
@@ -226,9 +254,14 @@ class TunnlPopup {
             this.showMessage('Error adding task', 'error');
         } finally {
             if (addButton) {
-                addButton.textContent = originalText;
+                addButton.textContent = originalText || '+';
                 addButton.disabled = false;
             }
+        }
+
+        // If this is the first task and no current task is set, make it active
+        if (this.settings.tasks.length === 1 && !this.settings.currentTask) {
+            this.setCurrentTask(taskText);
         }
     }
 
@@ -237,10 +270,15 @@ class TunnlPopup {
         this.settings.tasks.splice(taskIndex, 1);
         await this.saveSettings();
 
-        // If the removed task was the current one, clear currentTask in background
+        // If the removed task was the current one, set the first remaining task as active
         const cur = this.settings.currentTask;
         if (cur && (cur.index === taskIndex || cur.text === removed)) {
-            await this.clearCurrentTask(true); // silent = true
+            if (this.settings.tasks.length > 0) {
+                // Set the first remaining task as active
+                this.setCurrentTask(this.settings.tasks[0]);
+            } else {
+                await this.clearCurrentTask(true); // silent = true
+            }
         }
 
         this.showMessage('Task removed!', 'success');
@@ -255,22 +293,41 @@ class TunnlPopup {
         // Show/hide sections based on setup status
         const hasApiKey = !!this.settings.openaiApiKey;
 
-        const setupSection = document.getElementById('setup-section');
-        if (setupSection) setupSection.style.display = hasApiKey ? 'none' : 'block';
+        const apiSetup = document.getElementById('api-setup');
+        if (apiSetup) {
+            if (hasApiKey) {
+                apiSetup.classList.add('hidden');
+            } else {
+                apiSetup.classList.remove('hidden');
+            }
+        }
 
-        const tasksSection = document.getElementById('tasks-section');
-        if (tasksSection) tasksSection.style.display = hasApiKey ? 'block' : 'none';
+        const mainInterface = document.getElementById('main-interface');
+        if (mainInterface) {
+            if (hasApiKey) {
+                mainInterface.classList.remove('hidden');
+            } else {
+                mainInterface.classList.add('hidden');
+            }
+        }
 
         // Populate form fields
         const apiKeyEl = document.getElementById('api-key');
         if (apiKeyEl) apiKeyEl.value = this.settings.openaiApiKey || '';
 
-
-        // Render current task banner
-        this.renderCurrentTaskBanner();
-
         // Update task list
         this.updateTaskList();
+
+        // Update switching notice
+        this.updateSwitchingNotice();
+
+        // Load lock time from storage
+        chrome.storage.local.get(['lockEndTime'], (result) => {
+            if (result.lockEndTime) {
+                this.lockEndTime = result.lockEndTime;
+                this.updateSwitchingNotice();
+            }
+        });
     }
 
     renderCurrentTaskBanner() {
@@ -320,60 +377,89 @@ class TunnlPopup {
 
     updateTaskList() {
         const taskList = document.getElementById('task-list');
+        const completedTasks = document.getElementById('completed-tasks');
         if (!taskList) return;
 
+        // Clear both lists
         taskList.innerHTML = '';
-        const curText = this.settings.currentTask?.text;
+        if (completedTasks) completedTasks.innerHTML = '';
 
-        this.settings.tasks.forEach((task, index) => {
+        // Separate active and completed tasks
+        const activeTasks = this.settings.tasks?.filter(task => !task.completed) || [];
+        const completedTasksList = this.settings.tasks?.filter(task => task.completed) || [];
+
+        // Ensure there's always an active task - set first task as active if none is set
+        if (activeTasks.length > 0 && !this.settings.currentTask) {
+            // Set the first task as active immediately
+            const firstTask = activeTasks[0].text || activeTasks[0];
+            this.settings.currentTask = { text: firstTask, index: 0, setAt: Date.now() };
+            // Also save this to the background script
+            this.setCurrentTask(firstTask);
+        }
+
+        const currentTaskText = this.settings.currentTask?.text;
+        console.log('Current task text:', currentTaskText);
+        console.log('Active tasks:', activeTasks);
+
+        // Render active tasks
+        activeTasks.forEach((task) => {
             const taskItem = document.createElement('div');
             taskItem.className = 'task-item';
-            taskItem.style.display = 'flex';
-            taskItem.style.alignItems = 'center';
-            taskItem.style.gap = '8px';
-            taskItem.style.padding = '4px 0';
-
-            // "Select" button / radio-like
-            const selectBtn = document.createElement('button');
-            selectBtn.className = 'task-item-select';
-            selectBtn.title = 'Set as current task';
-            selectBtn.textContent = curText === task ? '✓' : '○';
-            selectBtn.addEventListener('click', () => {
-                this.setCurrentTaskByIndex(index);
-            });
-
-            const taskText = document.createElement('span');
-            taskText.className = 'task-item-text';
-            taskText.textContent = `${index + 1}. ${task}`;
-            taskText.style.flex = '1';
-            taskText.style.cursor = 'pointer';
-
-            // Clicking the text also selects
-            taskText.addEventListener('click', () => {
-                this.setCurrentTaskByIndex(index);
-            });
-
-            const removeButton = document.createElement('button');
-            removeButton.className = 'task-item-remove';
-            removeButton.textContent = '×';
-            removeButton.title = 'Remove task';
-            removeButton.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.removeTask(index);
-            });
-
-            // Highlight current
-            if (curText === task) {
-                taskItem.style.background = '#f3f0ff';
-                taskItem.style.borderRadius = '6px';
-                taskItem.style.padding = '6px 8px';
+            
+            // Add active class if this is the current task
+            const taskText = task.text || task;
+            console.log('Comparing:', currentTaskText, '===', taskText, '?', currentTaskText === taskText);
+            if (currentTaskText === taskText) {
+                taskItem.classList.add('active');
+                console.log('Added active class to task:', taskText);
             }
 
-            taskItem.appendChild(selectBtn);
-            taskItem.appendChild(taskText);
-            taskItem.appendChild(removeButton);
+            // Create radio button
+            const radio = document.createElement('div');
+            radio.className = 'task-radio';
+
+            // Create task text
+            const taskTextElement = document.createElement('div');
+            taskTextElement.className = 'task-text';
+            taskTextElement.textContent = taskText;
+
+            // Add click handler for the entire task item
+            taskItem.addEventListener('click', () => {
+                if (currentTaskText === taskText) {
+                    // If clicking on current task, show detail view
+                    this.showTaskDetail(task.id || taskText);
+                } else {
+                    // Otherwise, set as current task
+                    this.setCurrentTask(taskText);
+                }
+            });
+
+            taskItem.appendChild(radio);
+            taskItem.appendChild(taskTextElement);
             taskList.appendChild(taskItem);
         });
+
+        // Render completed tasks
+        completedTasksList.forEach((task) => {
+            const taskItem = document.createElement('div');
+            taskItem.className = 'task-item completed';
+
+            // Create radio button with checkmark
+            const radio = document.createElement('div');
+            radio.className = 'task-radio';
+
+            // Create task text
+            const taskText = document.createElement('div');
+            taskText.className = 'task-text';
+            taskText.textContent = task.text || task;
+
+            taskItem.appendChild(radio);
+            taskItem.appendChild(taskText);
+            if (completedTasks) completedTasks.appendChild(taskItem);
+        });
+
+        // Update stats
+        this.updateStats();
     }
 
     async setCurrentTaskByIndex(index) {
@@ -394,6 +480,25 @@ class TunnlPopup {
         } catch (e) {
             console.error('SET_CURRENT_TASK error', e);
             this.showMessage('Error setting current task', 'error');
+        }
+    }
+
+    async setCurrentTask(taskText) {
+        try {
+            const taskIndex = this.settings.tasks.findIndex(task => (task.text || task) === taskText);
+            const response = await this.sendMessageWithRetry({
+                type: 'SET_CURRENT_TASK',
+                index: taskIndex >= 0 ? taskIndex : 0
+            }, 5, 200);
+
+            if (response?.success) {
+                this.settings.currentTask = response.currentTask || { text: taskText, index: taskIndex, setAt: Date.now() };
+                this.updateUI();
+            } else {
+                console.error('Failed to set current task:', response?.error);
+            }
+        } catch (e) {
+            console.error('SET_CURRENT_TASK error', e);
         }
     }
 
@@ -461,6 +566,138 @@ class TunnlPopup {
         setTimeout(() => {
             message.remove();
         }, timeout);
+    }
+
+    // New methods for the redesigned interface
+
+    showTaskDetail(taskId) {
+        this.selectedTaskId = taskId;
+        this.currentView = 'detail';
+        
+        const task = this.settings.tasks?.find(t => t.id === taskId);
+        if (!task) return;
+
+        // Update task detail content
+        document.getElementById('detail-task-title').textContent = task.text;
+        document.getElementById('detail-task-description').textContent = task.description || task.text;
+
+        // Show task detail view
+        document.getElementById('main-interface').classList.add('hidden');
+        document.getElementById('task-detail').classList.remove('hidden');
+    }
+
+    showMainView() {
+        this.currentView = 'main';
+        this.selectedTaskId = null;
+        
+        // Hide task detail view
+        document.getElementById('task-detail').classList.add('hidden');
+        document.getElementById('main-interface').classList.remove('hidden');
+    }
+
+    selectTimer(button) {
+        // Remove selection from other timer buttons
+        document.querySelectorAll('.timer-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        
+        // Select this button
+        button.classList.add('selected');
+        
+        // Clear custom input if a preset is selected
+        const customInput = document.getElementById('custom-minutes');
+        if (customInput) {
+            customInput.value = '';
+        }
+
+        // Get minutes and potentially start timer
+        const minutes = parseInt(button.getAttribute('data-minutes'));
+        this.setLockTimer(minutes);
+    }
+
+    handleCustomTimer() {
+        const customInput = document.getElementById('custom-minutes');
+        const minutes = parseInt(customInput.value);
+        
+        if (minutes && minutes > 0) {
+            // Remove selection from preset buttons
+            document.querySelectorAll('.timer-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            this.setLockTimer(minutes);
+        }
+    }
+
+    setLockTimer(minutes) {
+        if (!minutes || minutes <= 0) return;
+        
+        this.lockEndTime = Date.now() + (minutes * 60 * 1000);
+        
+        // Save the lock time to storage
+        chrome.storage.local.set({
+            lockEndTime: this.lockEndTime,
+            lockedTaskId: this.selectedTaskId
+        });
+
+        // Update the switching notice
+        this.updateSwitchingNotice();
+        
+        // Go back to main view
+        this.showMainView();
+    }
+
+    updateSwitchingNotice() {
+        const notice = document.querySelector('.switching-notice');
+        const noticeText = document.querySelector('.notice-text');
+        
+        if (this.lockEndTime && Date.now() < this.lockEndTime) {
+            const remainingMs = this.lockEndTime - Date.now();
+            const remainingMinutes = Math.ceil(remainingMs / (1000 * 60));
+            const minutes = remainingMinutes % 60;
+            const hours = Math.floor(remainingMinutes / 60);
+            
+            let timeText = '';
+            if (hours > 0) {
+                timeText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} hr`;
+            } else {
+                timeText = `${minutes.toString().padStart(2, '0')}:${(remainingMs % 60000 / 1000).toFixed(0).padStart(2, '0')} min`;
+            }
+            
+            noticeText.textContent = `Switching tasks is locked for ${timeText}`;
+            notice.style.display = 'flex';
+        } else {
+            notice.style.display = 'none';
+            this.lockEndTime = null;
+        }
+    }
+
+    async deleteTask() {
+        if (!this.selectedTaskId) return;
+        
+        if (confirm('Are you sure you want to delete this task?')) {
+            try {
+                const response = await this.sendMessageWithRetry({
+                    type: 'DELETE_TASK',
+                    taskId: this.selectedTaskId
+                });
+
+                if (response.success) {
+                    await this.loadSettings();
+                    this.showMainView();
+                    this.updateTaskList();
+                }
+            } catch (error) {
+                console.error('Error deleting task:', error);
+            }
+        }
+    }
+
+    updateStats() {
+        // Update with real data when available
+        document.getElementById('urls-analyzed').textContent = '317';
+        document.getElementById('focus-score').textContent = '97%';
+        document.getElementById('urls-blocked').textContent = '16';
     }
 
 }

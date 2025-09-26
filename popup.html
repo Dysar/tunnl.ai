@@ -3,45 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tunnl.ai</title>
+    <title>Dam.AI - The smartest distraction blocker of all time</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🎯 tunnl.ai</h1>
-            <p>AI-powered distraction blocker</p>
-        </header>
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="branding">
+                    <h1>Dam.AI</h1>
+                    <p>The smartest distraction<br>blocker of all time</p>
+                </div>
+                <div class="mascot">
+                    <img src="Instagram Post Design (3).png" alt="Dam.AI Logo" class="logo-icon">
+                </div>
+            </div>
+        </div>
 
-        <div class="section" id="setup-section">
-            <h2>Setup</h2>
+        <!-- API Key Setup -->
+        <div id="api-setup" class="section hidden">
+            <h2>🔑 Setup Required</h2>
+            <p>Enter your OpenAI API key to get started:</p>
             <div class="input-group">
-                <label for="api-key">OpenAI API Key:</label>
                 <input type="password" id="api-key" placeholder="sk-...">
                 <button id="save-api-key" class="btn btn-primary">Save</button>
             </div>
+            <p class="help-text">
+                <a href="https://platform.openai.com/api-keys" target="_blank">Get your API key</a>
+            </p>
         </div>
 
-        <div class="section" id="tasks-section" style="display: none;">
-            <h2>Current Activities</h2>
-            
-            
-            <div class="task-input">
-                <div class="task-input-row">
-                    <input type="text" id="new-task-input" placeholder="Describe a current activity (e.g., coding backend, reading docs)">
-                    <button id="add-task-btn" class="btn btn-primary">Add Activity</button>
+        <!-- Main Interface -->
+        <div id="main-interface" class="section">
+            <!-- Stats Cards -->
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-value" id="urls-analyzed">317</div>
+                    <div class="stat-label">URLs analysed today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="focus-score">97%</div>
+                    <div class="stat-label">Focus Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="urls-blocked">16</div>
+                    <div class="stat-label">URLs blocked today</div>
                 </div>
             </div>
-            
-            <div class="task-list" id="task-list">
-                <!-- Tasks will be displayed here -->
+
+            <!-- Task Switching Notice -->
+            <div class="switching-notice">
+                <span class="warning-icon">⚠️</span>
+                <span class="notice-text">Switching tasks is locked for 04:51 min</span>
+            </div>
+
+            <!-- Task List -->
+            <div class="task-list-section">
+                <div id="task-list" class="task-list">
+                    <!-- Tasks will be populated here -->
+                </div>
+            </div>
+
+            <!-- Add New Task -->
+            <div class="add-task-section">
+                <div class="input-group">
+                    <input type="text" id="new-task-input" placeholder="Add new task...">
+                    <button id="add-task" class="btn-add">+</button>
+                </div>
+            </div>
+
+            <!-- Completed Tasks -->
+            <div class="completed-section">
+                <h3>Completed</h3>
+                <div id="completed-tasks" class="completed-tasks">
+                    <!-- Completed tasks will be populated here -->
+                </div>
             </div>
         </div>
 
-        
+        <!-- Task Detail View (hidden by default) -->
+        <div id="task-detail" class="task-detail hidden">
+            <div class="task-detail-header">
+                <button id="back-btn" class="back-btn">←</button>
+            </div>
+            
+            <div class="task-detail-content">
+                <div class="task-title-display">
+                    <h2 id="detail-task-title">Research AI companies</h2>
+                    <p id="detail-task-description">I have to research companies of artificial intelligence in the german sector</p>
+                </div>
 
-        <div class="footer">
-            <button id="settings-btn" class="btn btn-link">Settings</button>
+                <div class="timer-section">
+                    <h3>How long do you want to lock?</h3>
+                    <div class="timer-options">
+                        <button class="timer-btn" data-minutes="15">15 mins</button>
+                        <button class="timer-btn" data-minutes="30">30 mins</button>
+                        <div class="custom-timer">
+                            <input type="number" id="custom-minutes" placeholder="60" min="1" max="480">
+                            <span>mins</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="task-actions">
+                    <button id="delete-task" class="delete-btn">🗑️ Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="settings-section">
+            <button id="open-options" class="btn btn-link">⚙️ Settings</button>
         </div>
     </div>
 

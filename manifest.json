@@ -28,10 +28,10 @@
     "default_title": "tunnl.ai Settings"
   },
   "options_page": "options.html",
-  "web_accessible_resources": [
-    {
-      "resources": ["blocked.html", "blocked.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+    "web_accessible_resources": [
+        {
+            "resources": ["blocked.html", "blocked.js", "Instagram Post Design (3).png", "Excalifont Regular.woff2"],
+            "matches": ["<all_urls>"]
+        }
+    ]
 }

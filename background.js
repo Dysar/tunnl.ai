@@ -306,6 +306,52 @@ class TunnlBackground {
                 }
                 break;
 
+            case 'TEMPORARY_UNBLOCK':
+                try {
+                    const { url, duration } = message;
+                    if (!url) throw new Error('url is required');
+                    const durationMs = (duration || 10) * 60 * 1000; // Default 10 minutes
+                    await chrome.storage.local.set({
+                        temporaryUnblock: {
+                            url: url,
+                            until: Date.now() + durationMs
+                        }
+                    });
+                    sendResponse({ success: true, message: `Site temporarily unblocked for ${duration || 10} minutes` });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
+            case 'GET_STATS':
+                try {
+                    const stats = {
+                        blockedCount: this.settings.stats?.blockedCount || 0,
+                        analyzedCount: this.settings.stats?.analyzedCount || 0,
+                        focusScore: Math.min(100, Math.round((this.settings.stats?.blockedCount || 0) * 5)),
+                        timeSaved: Math.round((this.settings.stats?.blockedCount || 0) * 2.5)
+                    };
+                    sendResponse({ success: true, stats });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
+            case 'ONE_TIME_BYPASS':
+                try {
+                    const { url } = message;
+                    if (!url) throw new Error('url is required');
+                    await chrome.storage.local.set({
+                        oneTimeBypass: {
+                            url: url
+                        }
+                    });
+                    sendResponse({ success: true, message: 'One-time bypass set' });
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
             default:
                 sendResponse({ success: false, error: 'Unknown message type' });
         }
@@ -833,31 +879,30 @@ Respond with a JSON object containing:
             this.lastSuggestionPopupMs = now;
 
 
-            // Ask content script to show an in-page prompt that the user can click
+            // Ask content script to show modal overlay
             try {
                 if (typeof tabId === 'number') {
-                    console.log('📤 Sending toast message to content script:', {
+                    console.log('📤 Sending modal message to content script:', {
                         tabId,
                         url,
                         message,
                         activityUnderstanding
                     });
                     
-                    // Instead of showing toast, redirect to blockpage
-                    const blockPageUrl = chrome.runtime.getURL('blockpage.html') + 
-                        '?url=' + encodeURIComponent(url) + 
-                        '&reason=' + encodeURIComponent(reason) +
-                        '&task=' + encodeURIComponent(this.settings.currentTask?.text || 'No current task');
+                    await chrome.tabs.sendMessage(tabId, {
+                        type: 'SHOW_BLOCK_MODAL',
+                        url: url,
+                        message: reason,
+                        activityUnderstanding: activityUnderstanding,
+                        currentTask: this.settings.currentTask?.text || 'No active task'
+                    });
                     
-                    await chrome.tabs.update(tabId, { url: blockPageUrl });
-                    console.log('🔄 Redirected to block page:', blockPageUrl);
-                    
-                    console.log('✅ Toast message sent successfully');
+                    console.log('✅ Modal message sent successfully');
                 } else {
-                    console.log('⚠️ Invalid tabId, cannot send toast message');
+                    console.log('⚠️ Invalid tabId, cannot send modal message');
                 }
             } catch (msgErr) {
-                console.log('❌ Failed to send toast message:', msgErr.message);
+                console.log('❌ Failed to send modal message:', msgErr.message);
                 // Content script may not be ready or site CSP blocks injection; ignore
             }
 

@@ -30,7 +30,7 @@
   "options_page": "options.html",
     "web_accessible_resources": [
         {
-            "resources": ["blocked.html", "blocked.js", "Instagram Post Design (3).png", "Excalifont Regular.woff2"],
+            "resources": ["blocked.html", "blocked.js", "blocked-modal.html", "blocked-modal.js", "Instagram Post Design (3).png", "Excalifont Regular.woff2", "assets/beaver.png", "assets/access_denied.png", "assets/blocked_beaver.png"],
             "matches": ["<all_urls>"]
         }
     ]

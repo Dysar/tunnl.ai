@@ -907,4 +907,4 @@ const tunnl = new TunnlBackground();
 // Clean up cache every hour
 setInterval(() => {
     tunnl.cleanupCache();
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000 * 24);

@@ -46,7 +46,7 @@ body {
     background: #eaddd7;
     border-radius: 20px;
     margin: 12px;
-    padding: 20px;
+    padding: 12px 16px;
     border: 3px solid #67513a;
 }
 
@@ -57,7 +57,7 @@ body {
 }
 
 .branding h1 {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: bold;
     color: #2C1810;
     margin-bottom: 2px;
@@ -78,8 +78,8 @@ body {
 }
 
 .logo-icon {
-    width: 120px !important;
-    height: 120px !important;
+    width: 148px !important;
+    height: 148px !important;
     border-radius: 12px;
     object-fit: cover;
     display: block;
@@ -141,9 +141,23 @@ body {
 .task-list-section {
     flex: 1;
     margin: 0 12px;
+    position: relative;
 }
 
 .task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    padding-top: 40px; /* leave space for add button */
+    background: #d2bab0;
+    border-radius: 12px;
+    border: 2px solid #67513a;
+    min-height: 100px;
+    position: relative; /* anchor add button */
+}
+
+.task-items {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -167,11 +181,13 @@ body {
 
 .task-item.active {
     background: #79804d;
-    border-color: #67513a;
+    border-color: #000000;
+    border-width: 3px;
 }
 
 .task-item.active .task-text {
     color: white;
+    font-weight: 700;
 }
 
 .task-item.completed {
@@ -208,7 +224,7 @@ body {
 
 .task-item.completed .task-radio {
     background: #67513a;
-    border-color: #67513a;
+    border-color: #000000;
 }
 
 .task-item.completed .task-radio::after {
@@ -234,51 +250,24 @@ body {
     text-decoration: line-through;
 }
 
-/* Add Task Section */
-.add-task-section {
-    margin: 12px;
-}
-
-.input-group {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-#new-task-input {
-    flex: 1;
-    padding: 12px 16px;
-    border: 2px solid #67513a;
-    border-radius: 12px;
-    background: #eaddd7;
-    color: #2C1810;
-    font-size: 14px;
-    outline: none;
-}
-
-#new-task-input::placeholder {
-    color: #67513a;
-}
-
-#new-task-input:focus {
-    border-color: #D2691E;
-    background: #d2bab0;
-}
-
+/* Add Task Button - positioned in task list header */
 .btn-add {
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     border: 2px solid #67513a;
-    border-radius: 12px;
+    border-radius: 8px;
     background: #eaddd7;
     color: #2C1810;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: bold;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
+    position: absolute;
+    top: 8px;
+    right: 8px;
 }
 
 .btn-add:hover {
@@ -301,6 +290,11 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    background: #d2bab0;
+    border-radius: 12px;
+    padding: 12px;
+    border: 2px solid #67513a;
+    min-height: 60px;
 }
 
 /* Task Detail View */
@@ -339,6 +333,34 @@ body {
 
 .task-detail-content {
     padding: 0 12px;
+}
+
+.add-task-editor {
+    background: #eaddd7;
+    border: 2px solid #67513a;
+    border-radius: 16px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+#new-task-text {
+    width: 100%;
+    min-height: 120px;
+    border: none;
+    outline: none;
+    resize: vertical;
+    background: transparent;
+    color: #2C1810;
+    font-size: 14px;
+    line-height: 1.5;
+    font-family: inherit;
+}
+
+.char-counter {
+    text-align: right;
+    font-size: 12px;
+    color: #67513a;
+    margin-top: 4px;
 }
 
 .task-title-display {
@@ -398,7 +420,7 @@ body {
 .timer-btn:hover,
 .timer-btn.selected {
     background: #79804d;
-    border-color: #67513a;
+    border-color: #000000;
     color: white;
 }
 

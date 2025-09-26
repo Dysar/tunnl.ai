@@ -61,15 +61,10 @@
             <!-- Task List -->
             <div class="task-list-section">
                 <div id="task-list" class="task-list">
-                    <!-- Tasks will be populated here -->
-                </div>
-            </div>
-
-            <!-- Add New Task -->
-            <div class="add-task-section">
-                <div class="input-group">
-                    <input type="text" id="new-task-input" placeholder="Add new task...">
                     <button id="add-task" class="btn-add">+</button>
+                    <div id="task-items" class="task-items">
+                        <!-- Tasks will be populated here -->
+                    </div>
                 </div>
             </div>
 
@@ -115,6 +110,39 @@
         <!-- Settings -->
         <div class="settings-section">
             <button id="open-options" class="btn btn-link">⚙️ Settings</button>
+        </div>
+    </div>
+
+    <!-- Add Task View (hidden by default) -->
+    <div id="add-task-view" class="task-detail hidden">
+        <div class="task-detail-header">
+            <button id="add-back-btn" class="back-btn">←</button>
+        </div>
+        <div class="task-detail-content">
+            <div class="task-title-display">
+                <h2>Add a new task</h2>
+                <p>Describe exactly what you will focus on.</p>
+            </div>
+            <div class="add-task-editor">
+                <textarea id="new-task-text" placeholder="Type your task..." maxlength="100"></textarea>
+                <div class="char-counter">
+                    <span id="char-count">0</span>/100
+                </div>
+            </div>
+            <div class="timer-section">
+                <h3>How long do you want to lock?</h3>
+                <div class="timer-options">
+                    <button class="timer-btn" data-minutes="15">15 mins</button>
+                    <button class="timer-btn" data-minutes="30">30 mins</button>
+                    <div class="custom-timer">
+                        <input type="number" id="custom-minutes" placeholder="60" min="1" max="480">
+                        <span>mins</span>
+                    </div>
+                </div>
+            </div>
+            <div class="task-actions">
+                <button id="save-new-task" class="btn-primary">Save Task</button>
+            </div>
         </div>
     </div>
 

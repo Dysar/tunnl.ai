@@ -89,10 +89,10 @@ class TunnlPopup {
             saveBtn.addEventListener('click', () => this.saveApiKey());
         }
 
-        // Add task
+        // Add task - open add task view
         const addBtn = document.getElementById('add-task');
         if (addBtn) {
-            addBtn.addEventListener('click', () => this.addTask());
+            addBtn.addEventListener('click', () => this.showAddTaskView());
         }
 
         // Enter key for adding tasks
@@ -114,6 +114,34 @@ class TunnlPopup {
         const backBtn = document.getElementById('back-btn');
         if (backBtn) {
             backBtn.addEventListener('click', () => this.showMainView());
+        }
+
+        // Add Task view buttons
+        const addBackBtn = document.getElementById('add-back-btn');
+        if (addBackBtn) {
+            addBackBtn.addEventListener('click', () => this.showMainView());
+        }
+        const saveNewTaskBtn = document.getElementById('save-new-task');
+        if (saveNewTaskBtn) {
+            saveNewTaskBtn.addEventListener('click', () => this.addTaskFromEditor());
+        }
+
+        // Character counter for new task textarea
+        const newTaskText = document.getElementById('new-task-text');
+        if (newTaskText) {
+            newTaskText.addEventListener('input', () => this.updateCharCounter());
+        }
+
+        // Timer buttons in add task view
+        const addTimerBtns = document.querySelectorAll('#add-task-view .timer-btn');
+        addTimerBtns.forEach(btn => {
+            btn.addEventListener('click', () => this.selectAddTaskTimer(btn));
+        });
+
+        // Custom timer input in add task view
+        const addCustomMinutes = document.getElementById('custom-minutes');
+        if (addCustomMinutes) {
+            addCustomMinutes.addEventListener('input', () => this.handleAddTaskCustomTimer());
         }
 
         // Timer buttons
@@ -194,9 +222,62 @@ class TunnlPopup {
         }
     }
 
-    async addTask() {
-        const taskInput = document.getElementById('new-task-input');
-        const taskText = taskInput.value.trim();
+    showAddTaskView() {
+        document.getElementById('main-interface').classList.add('hidden');
+        document.getElementById('task-detail').classList.add('hidden');
+        document.getElementById('add-task-view').classList.remove('hidden');
+        const editor = document.getElementById('new-task-text');
+        if (editor) {
+            editor.value = '';
+            this.updateCharCounter();
+        }
+        // Clear timer selections
+        document.querySelectorAll('#add-task-view .timer-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        const customInput = document.getElementById('custom-minutes');
+        if (customInput) customInput.value = '';
+    }
+
+    updateCharCounter() {
+        const textarea = document.getElementById('new-task-text');
+        const counter = document.getElementById('char-count');
+        if (textarea && counter) {
+            counter.textContent = textarea.value.length;
+        }
+    }
+
+    selectAddTaskTimer(button) {
+        // Remove selection from other timer buttons in add task view
+        document.querySelectorAll('#add-task-view .timer-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        
+        // Select this button
+        button.classList.add('selected');
+        
+        // Clear custom input if a preset is selected
+        const customInput = document.getElementById('custom-minutes');
+        if (customInput) {
+            customInput.value = '';
+        }
+    }
+
+    handleAddTaskCustomTimer() {
+        const customInput = document.getElementById('custom-minutes');
+        const minutes = parseInt(customInput.value);
+        
+        if (minutes && minutes > 0) {
+            // Remove selection from preset buttons
+            document.querySelectorAll('#add-task-view .timer-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+        }
+    }
+
+    async addTaskFromEditor() {
+        const taskInput = document.getElementById('new-task-text');
+        const taskText = (taskInput ? taskInput.value : '').trim();
 
         if (!taskText) {
             this.showMessage('Please enter a task', 'error');
@@ -208,10 +289,10 @@ class TunnlPopup {
         }
 
         // Show loading state
-        const addButton = document.getElementById('add-task');
+        const addButton = document.getElementById('save-new-task');
         const originalText = addButton ? addButton.textContent : '';
         if (addButton) {
-            addButton.textContent = '...';
+            addButton.textContent = 'Validating...';
             addButton.disabled = true;
         }
 
@@ -245,8 +326,9 @@ class TunnlPopup {
             this.settings.tasks.push(taskText);
             await this.saveSettings();
 
-            taskInput.value = '';
+            if (taskInput) taskInput.value = '';
             this.showMessage('Task added!', 'success');
+            this.showMainView();
             this.updateUI();
 
         } catch (error) {
@@ -254,7 +336,7 @@ class TunnlPopup {
             this.showMessage('Error adding task', 'error');
         } finally {
             if (addButton) {
-                addButton.textContent = originalText || '+';
+                addButton.textContent = originalText || 'Save Task';
                 addButton.disabled = false;
             }
         }
@@ -376,7 +458,7 @@ class TunnlPopup {
     }
 
     updateTaskList() {
-        const taskList = document.getElementById('task-list');
+        const taskList = document.getElementById('task-items') || document.getElementById('task-list');
         const completedTasks = document.getElementById('completed-tasks');
         if (!taskList) return;
 

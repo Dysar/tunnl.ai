@@ -19,6 +19,10 @@ class TunnlBackground {
 
     async init() {
         console.log('tunnl.ai background script loaded');
+        
+        // Clear any existing quota issues first
+        await this.emergencyCleanup();
+        
         await this.loadSettings();
         this.setupEventListeners();
         this.setupNavigationListener();
@@ -27,17 +31,70 @@ class TunnlBackground {
         console.log('tunnl.ai initialized, extension enabled:', this.settings.extensionEnabled);
     }
 
+    async emergencyCleanup() {
+        try {
+            // Aggressively clean up any problematic data
+            const syncData = await chrome.storage.sync.get(null);
+            const localData = await chrome.storage.local.get(null);
+            
+            // If sync storage has too much data, clear it
+            const syncSize = JSON.stringify(syncData).length;
+            if (syncSize > 50000) { // 50KB threshold
+                console.log('🧹 Emergency cleanup: clearing oversized sync storage');
+                await chrome.storage.sync.clear();
+            }
+            
+            // If local storage has too much data, clean it
+            const localSize = JSON.stringify(localData).length;
+            if (localSize > 500000) { // 500KB threshold
+                console.log('🧹 Emergency cleanup: clearing oversized local storage');
+                await chrome.storage.local.clear();
+            }
+        } catch (error) {
+            console.log('Emergency cleanup failed:', error);
+        }
+    }
+
     async loadSettings() {
-        const result = await chrome.storage.sync.get([
-            'openaiApiKey',
-            'tasks',
-            'extensionEnabled',
-            'blockedSites',
-            'stats',
-            'allowlist',
-            'taskValidationEnabled',
-            'currentTask',
-        ]);
+        // Try local storage first (higher limits), fallback to sync
+        let result;
+        try {
+            result = await chrome.storage.local.get([
+                'openaiApiKey',
+                'tasks',
+                'currentTask',
+                'extensionEnabled',
+                'blockedSites',
+                'stats',
+                'allowlist',
+                'taskValidationEnabled'
+            ]);
+            
+            // If no data in local, try sync storage
+            if (!result.openaiApiKey && !result.tasks?.length) {
+                console.log('📦 No data in local storage, checking sync storage...');
+                result = await chrome.storage.sync.get([
+                    'openaiApiKey',
+                    'tasks',
+                    'currentTask',
+                    'extensionEnabled',
+                    'blockedSites',
+                    'stats',
+                    'allowlist',
+                    'taskValidationEnabled'
+                ]);
+                
+                // Migrate from sync to local if we found data
+                if (result.openaiApiKey || result.tasks?.length) {
+                    console.log('🔄 Migrating data from sync to local storage...');
+                    await chrome.storage.local.set(result);
+                    await chrome.storage.sync.clear();
+                }
+            }
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            result = {};
+        }
 
         this.settings = {
             openaiApiKey: result.openaiApiKey || '',
@@ -52,7 +109,57 @@ class TunnlBackground {
     }
 
     async saveSettings() {
-        await chrome.storage.sync.set(this.settings);
+        try {
+            // Clean up large data before saving
+            const cleanedSettings = this.cleanSettingsForStorage();
+            // Use local storage (much higher limits than sync)
+            await chrome.storage.local.set(cleanedSettings);
+        } catch (error) {
+            if (error.message.includes('quota')) {
+                console.warn('Storage quota exceeded, cleaning up data...');
+                await this.cleanupStorage();
+                // Retry with cleaned data
+                const cleanedSettings = this.cleanSettingsForStorage();
+                await chrome.storage.local.set(cleanedSettings);
+            } else {
+                throw error;
+            }
+        }
+    }
+
+    cleanSettingsForStorage() {
+        const cleaned = { ...this.settings };
+        
+        // Limit blocked sites to last 50 entries
+        if (cleaned.blockedSites && cleaned.blockedSites.length > 50) {
+            cleaned.blockedSites = cleaned.blockedSites.slice(-50);
+        }
+        
+        // Limit tasks to last 20 entries
+        if (cleaned.tasks && cleaned.tasks.length > 20) {
+            cleaned.tasks = cleaned.tasks.slice(-20);
+        }
+        
+        // Limit feedback to last 50 entries
+        if (cleaned.feedback && cleaned.feedback.length > 50) {
+            cleaned.feedback = cleaned.feedback.slice(-50);
+        }
+        
+        // Remove large objects that aren't essential
+        delete cleaned.urlCache; // This is stored in memory only
+        
+        return cleaned;
+    }
+
+    async cleanupStorage() {
+        try {
+            // Clear all storage and start fresh
+            await chrome.storage.local.clear();
+            await chrome.storage.sync.clear();
+            console.log('🧹 Storage cleaned up due to quota exceeded');
+        } catch (error) {
+            console.error('Failed to cleanup storage:', error);
+        }
     }
 
     setupEventListeners() {
@@ -213,7 +320,7 @@ class TunnlBackground {
 
     setupStorageListener() {
         chrome.storage.onChanged.addListener((changes, area) => {
-            if (area !== 'sync') return;
+            if (area !== 'local') return;
 
             if (changes.currentTask) {
                 this.settings.currentTask = changes.currentTask.newValue || null;
@@ -402,9 +509,13 @@ class TunnlBackground {
             this.urlCache.set(cacheKey, { ...analysis, timestamp: Date.now() });
             console.log('💾 Cached analysis result');
 
-            // Update stats
+            // Update stats (batch saves to reduce storage calls)
             this.settings.stats.analyzedCount++;
-            await this.saveSettings();
+            
+            // Only save settings every 10 analyses to reduce storage pressure
+            if (this.settings.stats.analyzedCount % 10 === 0) {
+                await this.saveSettings();
+            }
             console.log('📊 Stats updated - analyzed count:', this.settings.stats.analyzedCount);
 
             if (analysis.shouldBlock) {
@@ -694,11 +805,22 @@ Respond with a JSON object containing:
                 message
             });
 
-            // Track as suggested block (not a strict block)
-            this.settings.blockedSites.push({ url, timestamp: Date.now(), reason: `Suggest: ${reason}` });
-            if (this.settings.blockedSites.length > 100) {
-                this.settings.blockedSites = this.settings.blockedSites.slice(-100);
+            // Track as suggested block (not a strict block) - limit data size
+            const shortReason = reason.substring(0, 50); // Limit reason length
+            this.settings.blockedSites.push({ 
+                url: url.substring(0, 100), // Limit URL length
+                timestamp: Date.now(), 
+                reason: `Suggest: ${shortReason}` 
+            });
+            
+            // Keep only last 30 blocked sites to save storage space
+            if (this.settings.blockedSites.length > 30) {
+                this.settings.blockedSites = this.settings.blockedSites.slice(-30);
             }
+            
+            // Update stats
+            this.settings.stats.blockedCount++;
+            
             await this.saveSettings();
             console.log('💾 Blocked sites updated, total count:', this.settings.blockedSites.length);
 
@@ -721,12 +843,14 @@ Respond with a JSON object containing:
                         activityUnderstanding
                     });
                     
-                    await chrome.tabs.sendMessage(tabId, {
-                        type: 'SHOW_BLOCK_TOAST',
-                        url,
-                        message,
-                        activityUnderstanding
-                    });
+                    // Instead of showing toast, redirect to blockpage
+                    const blockPageUrl = chrome.runtime.getURL('blockpage.html') + 
+                        '?url=' + encodeURIComponent(url) + 
+                        '&reason=' + encodeURIComponent(reason) +
+                        '&task=' + encodeURIComponent(this.settings.currentTask?.text || 'No current task');
+                    
+                    await chrome.tabs.update(tabId, { url: blockPageUrl });
+                    console.log('🔄 Redirected to block page:', blockPageUrl);
                     
                     console.log('✅ Toast message sent successfully');
                 } else {

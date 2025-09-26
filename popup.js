@@ -237,6 +237,8 @@ class TunnlPopup {
         });
         const customInput = document.getElementById('custom-minutes');
         if (customInput) customInput.value = '';
+        // Clear validation message
+        this.clearAddTaskValidationMessage();
     }
 
     updateCharCounter() {
@@ -275,18 +277,45 @@ class TunnlPopup {
         }
     }
 
+    clearAddTaskValidationMessage() {
+        const messageEl = document.getElementById('add-task-validation-message');
+        if (messageEl) {
+            messageEl.classList.add('hidden');
+            messageEl.textContent = '';
+            messageEl.className = 'validation-message-inline hidden';
+        }
+    }
+
+    showAddTaskValidationMessage(text, type) {
+        const messageEl = document.getElementById('add-task-validation-message');
+        if (messageEl) {
+            messageEl.classList.remove('hidden');
+            messageEl.className = `validation-message-inline ${type}`;
+            
+            // Show full message since it's now scrollable
+            if (text.includes('\n')) {
+                messageEl.innerHTML = text.replace(/\n/g, '<br>');
+            } else {
+                messageEl.textContent = text;
+            }
+        }
+    }
+
     async addTaskFromEditor() {
         const taskInput = document.getElementById('new-task-text');
         const taskText = (taskInput ? taskInput.value : '').trim();
 
         if (!taskText) {
-            this.showMessage('Please enter a task', 'error');
+            this.showAddTaskValidationMessage('Please enter a task', 'error');
             return;
         }
         if (this.settings.tasks.includes(taskText)) {
-            this.showMessage('Task already exists', 'error');
+            this.showAddTaskValidationMessage('Task already exists', 'error');
             return;
         }
+
+        // Clear previous validation message
+        this.clearAddTaskValidationMessage();
 
         // Show loading state
         const addButton = document.getElementById('save-new-task');
@@ -311,14 +340,14 @@ class TunnlPopup {
                         if (validation.suggestions && validation.suggestions.length > 0) {
                             errorMessage += '\n\nSuggestions:\n• ' + validation.suggestions.join('\n• ');
                         }
-                        this.showMessage(errorMessage, 'error');
+                        this.showAddTaskValidationMessage(errorMessage, 'error');
                         return;
                     } else {
-                        this.showMessage(`Task validated: ${validation.reason}`, 'success');
+                        this.showAddTaskValidationMessage(`✅ Task validated: ${validation.reason}`, 'success');
                     }
                 } else {
                     console.error('Task validation failed:', response.error);
-                    this.showMessage('Task validation failed, but adding anyway', 'warning');
+                    this.showAddTaskValidationMessage('Task validation failed, but adding anyway', 'warning');
                 }
             }
 
@@ -327,13 +356,17 @@ class TunnlPopup {
             await this.saveSettings();
 
             if (taskInput) taskInput.value = '';
-            this.showMessage('Task added!', 'success');
-            this.showMainView();
-            this.updateUI();
+            this.showAddTaskValidationMessage('✅ Task added successfully!', 'success');
+            
+            // Auto-return to main view after a short delay
+            setTimeout(() => {
+                this.showMainView();
+                this.updateUI();
+            }, 1500);
 
         } catch (error) {
             console.error('Error adding task:', error);
-            this.showMessage('Error adding task', 'error');
+            this.showAddTaskValidationMessage('Error adding task', 'error');
         } finally {
             if (addButton) {
                 addButton.textContent = originalText || 'Save Task';

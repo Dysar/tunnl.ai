@@ -29,18 +29,55 @@
                   radial-gradient(1000px 700px at -10% 110%, rgba(34,211,238,.12), transparent 60%),
                   linear-gradient(180deg, var(--bg1), var(--bg2));
       color:#e5e7eb;
+      min-height:100vh;
+      position:relative;
+    }
+
+    /* Blur overlay for background content */
+    .blur-overlay{
+      position:fixed;
+      top:0;
+      left:0;
+      right:0;
+      bottom:0;
+      background:rgba(15, 23, 42, 0.8);
+      backdrop-filter:blur(8px);
+      z-index:9998;
+    }
+
+    /* Modal container */
+    .modal-container{
+      position:fixed;
+      top:0;
+      left:0;
+      right:0;
+      bottom:0;
       display:grid;
       place-items:center;
       padding:28px;
+      z-index:9999;
     }
 
     .card{
-      width:min(900px, 92vw);
+      width:min(500px, 90vw);
+      max-height:90vh;
       background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
       border:1px solid rgba(255,255,255,.08);
       border-radius:24px;
       box-shadow: 0 20px 45px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
       overflow:hidden;
+      animation: modalSlideIn 0.3s ease-out;
+    }
+
+    @keyframes modalSlideIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9) translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
     }
 
     .inner{
@@ -68,7 +105,7 @@
       display:grid; place-items:center; margin:18px 0 8px;
     }
     .beaver{
-      width:min(360px, 65vw);
+      width:min(200px, 40vw);
       aspect-ratio:1/1; object-fit:contain; display:block;
       filter: drop-shadow(0 20px 25px rgba(0,0,0,.35));
       border-radius:16px;
@@ -81,7 +118,7 @@
       --_bg: transparent; --_bd: rgba(255,255,255,.18); --_fg:#e7eef7;
       appearance:none; border:1px solid var(--_bd); background:var(--_bg); color:var(--_fg);
       padding:12px 18px; border-radius:14px; font-weight:600; letter-spacing:.2px; cursor:pointer;
-      transition:.22s ease; min-width:160px; backdrop-filter: blur(6px);
+      transition:.22s ease; min-width:140px; backdrop-filter: blur(6px);
     }
     .btn:hover{ transform: translateY(-1px); box-shadow:0 8px 22px rgba(0,0,0,.35); }
     .btn:focus{ outline:none; box-shadow:0 0 0 6px var(--ring); }
@@ -104,44 +141,98 @@
   </style>
 </head>
 <body>
-  <main class="card" role="main">
-    <div class="inner">
-      <div class="branding" aria-label="Brand">
-        <div class="logo" aria-hidden="true">DA</div>
-        <h1>DamAI</h1>
+  <!-- Blur overlay for background content -->
+  <div class="blur-overlay"></div>
+  
+  <!-- Modal container -->
+  <div class="modal-container">
+    <main class="card" role="main">
+      <div class="inner">
+        <div class="branding" aria-label="Brand">
+          <div class="logo" aria-hidden="true">DA</div>
+          <h1>DamAI</h1>
+        </div>
+        <p class="subtitle">Website was blocked because:</p>
+
+        <div class="hero">
+          <!-- Place the provided image file in the same folder as this HTML, or update the src path accordingly -->
+          <img src="assets/beaver.png" alt="Beaver holding a sign that reads 'Website Blocked'" class="beaver" />
+        </div>
+
+        <p class="reason">This site was flagged by our safety filters (e.g., suspicious content, malware risk, or policy violation).</p>
+
+        <div class="actions">
+          <button class="btn btn-ghost" id="goBackBtn" type="button">Go Back</button>
+          <button class="btn btn-primary" id="continueBtn" type="button">Continue to Site</button>
+        </div>
+
+        <div class="divider" aria-hidden="true"></div>
+
+        <p class="footnote">I don't care, <a id="continueLink" href="#">just continue to the site anywhere</a>.</p>
       </div>
-      <p class="subtitle">Website was blocked because:</p>
-
-      <div class="hero">
-        <!-- Place the provided image file in the same folder as this HTML, or update the src path accordingly -->
-        <img src="assets/beaver.png" alt="Beaver holding a sign that reads 'Website Blocked'" class="beaver" />
-      </div>
-
-      <p class="reason">This site was flagged by our safety filters (e.g., suspicious content, malware risk, or policy violation).</p>
-
-      <div class="actions">
-        <button class="btn btn-ghost" id="goBackBtn" type="button">Go Back</button>
-        <a class="btn btn-primary" id="reportBtn" href="mailto:support@damai.example?subject=Wrongly%20assessed%20block&body=URL:%20%3Cpaste%20here%3E%0AReason%20why%20it%20should%20not%20be%20blocked:%20" role="button">Wrongly assessed</a>
-      </div>
-
-      <div class="divider" aria-hidden="true"></div>
-
-      <p class="footnote">I don’t care, <a id="continueLink" href="#">just continue to the site anywhere</a>.</p>
-    </div>
-  </main>
+    </main>
+  </div>
 
   <script>
-    // Basic interactions — adjust to your routing / product needs
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const blockedUrl = urlParams.get('url');
+    const reason = urlParams.get('reason');
+    const task = urlParams.get('task');
+
+    // Update page content with actual data
+    if (reason) {
+      const reasonElement = document.querySelector('.reason');
+      if (reasonElement) {
+        reasonElement.textContent = reason;
+      }
+    }
+
+    if (task && task !== 'No current task') {
+      const subtitle = document.querySelector('.subtitle');
+      if (subtitle) {
+        subtitle.textContent = `Website was blocked because it's not related to your current task: "${task}"`;
+      }
+    }
+
+    // Basic interactions
     document.getElementById('goBackBtn').addEventListener('click', () => {
       if (history.length > 1) history.back();
-      else window.location.href = '/';
+      else window.location.href = 'chrome://new-tab-page/';
+    });
+
+    document.getElementById('continueBtn').addEventListener('click', () => {
+      if (blockedUrl) {
+        // Set temporary bypass for 10 minutes
+        chrome.storage.local.set({
+          temporaryUnblock: {
+            url: blockedUrl,
+            until: Date.now() + (10 * 60 * 1000) // 10 minutes
+          }
+        });
+        
+        // Navigate to the blocked URL
+        window.location.href = blockedUrl;
+      } else {
+        window.location.href = 'chrome://new-tab-page/';
+      }
     });
 
     document.getElementById('continueLink').addEventListener('click', (e) => {
       e.preventDefault();
-      // Replace with your bypass logic or destination URL
-      // Example: window.location.href = new URLSearchParams(location.search).get('dest') || 'https://example.com';
-      alert('Bypass not configured. Hook this link to your allowlist or destination URL.');
+      if (blockedUrl) {
+        // Set one-time bypass
+        chrome.storage.local.set({
+          oneTimeBypass: {
+            url: blockedUrl
+          }
+        });
+        
+        // Navigate to the blocked URL
+        window.location.href = blockedUrl;
+      } else {
+        window.location.href = 'chrome://new-tab-page/';
+      }
     });
   </script>
 </body>

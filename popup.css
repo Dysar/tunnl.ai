@@ -39,6 +39,8 @@ body {
     min-height: 600px;
     display: flex;
     flex-direction: column;
+    position: relative;
+    padding-bottom: 60px; /* Space for anchored settings button */
 }
 
 /* Header */
@@ -46,7 +48,7 @@ body {
     background: #eaddd7;
     border-radius: 20px;
     margin: 12px;
-    padding: 12px 16px;
+    padding: 4px 8px;
     border: 3px solid #67513a;
 }
 
@@ -57,10 +59,10 @@ body {
 }
 
 .branding h1 {
-    font-size: 26px;
+    font-size: 24px;
     font-weight: bold;
     color: #2C1810;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
     font-family: 'Excalifont', 'Kalam', cursive;
 }
 
@@ -75,11 +77,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    border-image-width: 10px;
 }
 
 .logo-icon {
-    width: 148px !important;
-    height: 148px !important;
+    width: 120px !important;
+    height: 120px !important;
     border-radius: 12px;
     object-fit: cover;
     display: block;
@@ -144,6 +147,13 @@ body {
     position: relative;
 }
 
+.task-list-title {
+    font-size: 14px;
+    color: #eaddd7;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
 .task-list {
     display: flex;
     flex-direction: column;
@@ -153,8 +163,10 @@ body {
     background: #d2bab0;
     border-radius: 12px;
     border: 2px solid #67513a;
-    min-height: 100px;
+    min-height: 120px;
+    max-height: 200px;
     position: relative; /* anchor add button */
+    overflow-y: auto;
 }
 
 .task-items {
@@ -294,7 +306,9 @@ body {
     border-radius: 12px;
     padding: 12px;
     border: 2px solid #67513a;
-    min-height: 60px;
+    min-height: 120px;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 /* Task Detail View */
@@ -586,8 +600,14 @@ body {
 
 /* Settings */
 .settings-section {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     padding: 12px;
     text-align: center;
+    background: #67513a;
+    border-top: 1px solid rgba(234, 221, 215, 0.2);
 }
 
 .btn-link {

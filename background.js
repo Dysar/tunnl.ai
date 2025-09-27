@@ -10,14 +10,15 @@ class TunnlBackground {
             tasks: [],
             extensionEnabled: true,
             blockedSites: [],
-            stats: { blockedCount: 0, analyzedCount: 0 },
             taskValidationEnabled: true,
             currentTask: null,
         };
         this.urlCache = new Map(); // Cache for analyzed URLs
         this.lastSuggestionPopupMs = 0; // Debounce popup suggestions
         this.recentUrls = []; // Track last 5 URLs for context
+
         this.taskValidator = null; // Will be initialized after settings are loaded
+        this.statsManager = null; // Will be initialized after settings load
         this.init();
     }
 
@@ -28,7 +29,13 @@ class TunnlBackground {
         await this.emergencyCleanup();
         
         await this.loadSettings();
+
         this.taskValidator = new TaskValidator(this.settings, this.retryRequest.bind(this));
+        
+        // Initialize statistics manager
+        this.statsManager = new StatisticsManager();
+        await this.statsManager.init();
+        
         this.setupEventListeners();
         this.setupNavigationListener();
         this.setupStorageListener();
@@ -264,6 +271,15 @@ class TunnlBackground {
 
             case 'GET_SETTINGS':
                 sendResponse({ success: true, settings: this.settings });
+                break;
+
+            case 'GET_STATISTICS':
+                if (this.statsManager) {
+                    const stats = this.statsManager.getFormattedStats();
+                    sendResponse({ success: true, statistics: stats });
+                } else {
+                    sendResponse({ success: false, error: 'Statistics manager not initialized' });
+                }
                 break;
 
             case 'UPDATE_SETTINGS':
@@ -571,14 +587,11 @@ class TunnlBackground {
             this.urlCache.set(cacheKey, { ...analysis, timestamp: Date.now() });
             console.log('💾 Cached analysis result');
 
-            // Update stats (batch saves to reduce storage calls)
-            this.settings.stats.analyzedCount++;
-            
-            // Only save settings every 10 analyses to reduce storage pressure
-            if (this.settings.stats.analyzedCount % 10 === 0) {
-                await this.saveSettings();
+            // Update statistics
+            if (this.statsManager) {
+                await this.statsManager.incrementUrlsAnalyzed();
             }
-            console.log('📊 Stats updated - analyzed count:', this.settings.stats.analyzedCount);
+            console.log('📊 Stats updated - analyzed count:', this.statsManager?.getStats().urlsAnalyzedToday || 0);
 
             if (analysis.shouldBlock) {
                 console.log('🚫 URL should be blocked, showing notification...');
@@ -782,8 +795,10 @@ class TunnlBackground {
                 this.settings.blockedSites = this.settings.blockedSites.slice(-30);
             }
             
-            // Update stats
-            this.settings.stats.blockedCount++;
+            // Update statistics
+            if (this.statsManager) {
+                await this.statsManager.incrementUrlsBlocked();
+            }
             
             await this.saveSettings();
             console.log('💾 Blocked sites updated, total count:', this.settings.blockedSites.length);

@@ -134,6 +134,10 @@ class StatisticsManager {
 // Export for use in other files
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = StatisticsManager;
-} else {
+} else if (typeof self !== 'undefined') {
+    // For service workers (background scripts)
+    self.StatisticsManager = StatisticsManager;
+} else if (typeof window !== 'undefined') {
+    // For regular web pages
     window.StatisticsManager = StatisticsManager;
 }

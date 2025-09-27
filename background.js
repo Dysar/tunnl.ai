@@ -1,7 +1,8 @@
 // Background script for tunnl.ai Chrome Extension
 
-// Import TaskValidator
+// Import TaskValidator and StatisticsManager
 importScripts('task-validator.js');
+importScripts('statistics.js');
 
 class TunnlBackground {
     constructor() {
@@ -34,7 +35,6 @@ class TunnlBackground {
         
         // Initialize statistics manager
         this.statsManager = new StatisticsManager();
-        await this.statsManager.init();
         
         this.setupEventListeners();
         this.setupNavigationListener();

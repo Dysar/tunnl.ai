@@ -1,0 +1,103 @@
+// Message type constants for tunnl.ai Chrome Extension
+
+export const MESSAGE_TYPES = {
+    // Task management
+    SET_CURRENT_TASK: 'SET_CURRENT_TASK',
+    CLEAR_CURRENT_TASK: 'CLEAR_CURRENT_TASK',
+    DELETE_TASK: 'DELETE_TASK',
+    
+    // Extension control
+    TOGGLE_EXTENSION: 'TOGGLE_EXTENSION',
+    
+    // URL analysis
+    ANALYZE_URL: 'ANALYZE_URL',
+    VALIDATE_TASK: 'VALIDATE_TASK',
+    
+    // Settings management
+    GET_SETTINGS: 'GET_SETTINGS',
+    UPDATE_SETTINGS: 'UPDATE_SETTINGS',
+    OPEN_SETTINGS: 'OPEN_SETTINGS',
+    
+    // Feedback and blocking
+    BLOCK_FEEDBACK: 'BLOCK_FEEDBACK',
+    SHOW_BLOCK_TOAST: 'SHOW_BLOCK_TOAST',
+    SHOW_BLOCK_MODAL: 'SHOW_BLOCK_MODAL',
+    
+    // API management
+    VALIDATE_API_KEY: 'VALIDATE_API_KEY',
+    
+    // Allowlist management
+    ADD_TO_ALLOWLIST: 'ADD_TO_ALLOWLIST',
+    REMOVE_FROM_ALLOWLIST: 'REMOVE_FROM_ALLOWLIST',
+    
+    // Unblocking actions
+    TEMPORARY_UNBLOCK: 'TEMPORARY_UNBLOCK',
+    ONE_TIME_BYPASS: 'ONE_TIME_BYPASS',
+    
+    // Statistics
+    GET_STATS: 'GET_STATS',
+    UPDATE_STATS: 'UPDATE_STATS',
+    RESET_STATS: 'RESET_STATS',
+    
+    // Data management
+    EXPORT_DATA: 'EXPORT_DATA',
+    IMPORT_DATA: 'IMPORT_DATA',
+    CLEAR_ALL_DATA: 'CLEAR_ALL_DATA'
+};
+
+// Message response status
+export const MESSAGE_STATUS = {
+    SUCCESS: 'success',
+    ERROR: 'error',
+    PENDING: 'pending'
+};
+
+// Message categories for organization
+export const MESSAGE_CATEGORIES = {
+    TASK_MANAGEMENT: [
+        MESSAGE_TYPES.SET_CURRENT_TASK,
+        MESSAGE_TYPES.CLEAR_CURRENT_TASK,
+        MESSAGE_TYPES.DELETE_TASK,
+        MESSAGE_TYPES.VALIDATE_TASK
+    ],
+    
+    EXTENSION_CONTROL: [
+        MESSAGE_TYPES.TOGGLE_EXTENSION,
+        MESSAGE_TYPES.OPEN_SETTINGS
+    ],
+    
+    URL_ANALYSIS: [
+        MESSAGE_TYPES.ANALYZE_URL,
+        MESSAGE_TYPES.SHOW_BLOCK_TOAST,
+        MESSAGE_TYPES.SHOW_BLOCK_MODAL,
+        MESSAGE_TYPES.BLOCK_FEEDBACK
+    ],
+    
+    SETTINGS: [
+        MESSAGE_TYPES.GET_SETTINGS,
+        MESSAGE_TYPES.UPDATE_SETTINGS,
+        MESSAGE_TYPES.VALIDATE_API_KEY
+    ],
+    
+    ALLOWLIST: [
+        MESSAGE_TYPES.ADD_TO_ALLOWLIST,
+        MESSAGE_TYPES.REMOVE_FROM_ALLOWLIST
+    ],
+    
+    UNBLOCKING: [
+        MESSAGE_TYPES.TEMPORARY_UNBLOCK,
+        MESSAGE_TYPES.ONE_TIME_BYPASS
+    ],
+    
+    STATISTICS: [
+        MESSAGE_TYPES.GET_STATS,
+        MESSAGE_TYPES.UPDATE_STATS,
+        MESSAGE_TYPES.RESET_STATS
+    ],
+    
+    DATA_MANAGEMENT: [
+        MESSAGE_TYPES.EXPORT_DATA,
+        MESSAGE_TYPES.IMPORT_DATA,
+        MESSAGE_TYPES.CLEAR_ALL_DATA
+    ]
+};

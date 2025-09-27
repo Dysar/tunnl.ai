@@ -3,12 +3,6 @@
   "name": "tunnl.ai - AI Website Blocker",
   "version": "1.0.0",
   "description": "AI-powered website blocker that helps you stay focused on your tasks by analyzing and blocking distracting websites.",
-  "icons": {
-    "16": "assets/images/beaver.png",
-    "32": "assets/images/beaver.png",
-    "48": "assets/images/beaver.png",
-    "128": "assets/images/beaver.png"
-  },
   "permissions": [
     "activeTab",
     "storage",
@@ -20,31 +14,24 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "background/background.js"
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/content.js"],
+      "js": ["content.js"],
       "run_at": "document_start"
     }
   ],
   "action": {
-    "default_popup": "popup/popup.html",
+    "default_popup": "popup.html",
     "default_title": "tunnl.ai Settings"
   },
-  "options_page": "options/options.html",
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "blocked/blocked.html",
-        "blocked/blocked.js",
-        "assets/images/access_denied.png",
-        "assets/images/beaver.png",
-        "assets/images/blocked_beaver.png",
-        "assets/fonts/Excalifont Regular.woff2"
-      ],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "options_page": "options.html",
+    "web_accessible_resources": [
+        {
+            "resources": ["blocked.html", "blocked.js", "blocked-modal.html", "blocked-modal.js", "Instagram Post Design (3).png", "Excalifont Regular.woff2", "assets/beaver.png", "assets/access_denied.png", "assets/blocked_beaver.png"],
+            "matches": ["<all_urls>"]
+        }
+    ]
 }

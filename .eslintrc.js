@@ -6,12 +6,16 @@ module.exports = {
     node: true
   },
   extends: [
-    'eslint:recommended'
+    'eslint:recommended',
+    '@typescript-eslint/recommended'
   ],
+  parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 'latest',
-    sourceType: 'module'
+    sourceType: 'module',
+    project: './tsconfig.json'
   },
+  plugins: ['@typescript-eslint'],
   rules: {
     // General rules
     'no-console': 'warn',
@@ -53,7 +57,16 @@ module.exports = {
         'name': 'chrome',
         'message': 'Use chrome.* APIs properly'
       }
-    ]
+    ],
+    
+    // TypeScript specific rules
+    '@typescript-eslint/no-unused-vars': 'warn',
+    '@typescript-eslint/no-explicit-any': 'warn',
+    '@typescript-eslint/explicit-function-return-type': 'off',
+    '@typescript-eslint/explicit-module-boundary-types': 'off',
+    '@typescript-eslint/no-non-null-assertion': 'warn',
+    '@typescript-eslint/prefer-const': 'error',
+    '@typescript-eslint/no-var-requires': 'error'
   },
   globals: {
     // Chrome Extension APIs

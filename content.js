@@ -1,6 +1,14 @@
 // Content script for tunnl.ai Chrome Extension
 // Simplified - only handles temporary unblock notifications
 
+// Prevent multiple script injections
+if (window.tunnlContentScriptLoaded) {
+    console.log('⚠️ Content script already loaded, preventing duplicate');
+    // Exit early to prevent duplicate class declaration
+    throw new Error('Content script already loaded');
+}
+window.tunnlContentScriptLoaded = true;
+
 class TunnlContent {
     constructor() {
         this.init();
@@ -12,11 +20,22 @@ class TunnlContent {
             return; // Don't interfere with blocked page
         }
 
+        // Prevent multiple initializations
+        if (window.tunnlContentInitialized) {
+            console.log('⚠️ Content script already initialized, skipping');
+            return;
+        }
+        window.tunnlContentInitialized = true;
+
+        console.log('🚀 Tunnl content script initializing...');
+
         // Check for temporary unblock status
         await this.checkTemporaryUnblock();
 
         // Listen for background prompts
-        chrome.runtime.onMessage.addListener((message) => {
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            console.log('📨 Content script received message:', message?.type);
+            
             if (message && message.type === 'SHOW_BLOCK_TOAST') {
                 console.log('📨 Content script received toast message:', {
                     url: message.url,
@@ -24,6 +43,7 @@ class TunnlContent {
                     activityUnderstanding: message.activityUnderstanding
                 });
                 this.showBlockToast(message.url, message.message, message.activityUnderstanding);
+                sendResponse({ success: true });
             } else if (message && message.type === 'SHOW_BLOCK_MODAL') {
                 console.log('📨 Content script received modal message:', {
                     url: message.url,
@@ -33,8 +53,13 @@ class TunnlContent {
                 });
                 console.log('🔍 About to call showBlockModal...');
                 this.showBlockModal(message.url, message.message, message.activityUnderstanding, message.currentTask);
+                sendResponse({ success: true });
             }
+            
+            return true; // Keep message channel open for async response
         });
+
+        console.log('✅ Tunnl content script initialized successfully');
     }
 
     async checkTemporaryUnblock() {
@@ -174,7 +199,7 @@ class TunnlContent {
                         </div>
                         
                         <p class="tunnl-bypass-link">
-                            <a id="tunnl-continue-link" href="#">I dont care if its a distraction, allow now</a>
+                            <a id="tunnl-continue-link" href="#">'I don't care if its a distraction, allow now</a>
                         </p>
                     </div>
                 </div>
@@ -237,7 +262,7 @@ class TunnlContent {
 
                 .tunnl-image-container {
                     position: absolute;
-                    top: -180px; /* Position higher to prevent overlap with green text */
+                    top: -220px; /* Position even higher to prevent overlap with modal content */
                     left: 50%;
                     transform: translateX(-50%);
                     z-index: 10;
@@ -285,7 +310,6 @@ class TunnlContent {
                     margin: 0;
                     font-weight: 400;
                     text-align: left;
-                    font-style: italic;
                 }
 
                 .tunnl-action-buttons {
@@ -297,7 +321,7 @@ class TunnlContent {
                 }
 
                 .tunnl-btn {
-                    padding: 14px 24px;
+                    padding: 18px 28px;
                     border-radius: 12px;
                     font-size: 16px;
                     font-weight: 400;
@@ -306,8 +330,13 @@ class TunnlContent {
                     border: 3px solid;
                     font-family: inherit;
                     min-width: 160px;
+                    min-height: 56px;
                     text-transform: none;
                     letter-spacing: 0.5px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    line-height: 1.2;
                 }
 
                 .tunnl-btn:hover {
@@ -317,26 +346,26 @@ class TunnlContent {
 
                 .tunnl-btn-secondary {
                     background: #eaddd7 !important;
-                    border-color: #000000 !important;
-                    color: #000000 !important;
+                    border-color: #67513a !important;
+                    color: #2C1810 !important;
                 }
 
                 .tunnl-btn-secondary:hover {
                     background: #d2bab0 !important;
-                    border-color: #000000 !important;
-                    color: #000000 !important;
+                    border-color: #67513a !important;
+                    color: #2C1810 !important;
                 }
 
                 .tunnl-btn-primary {
                     background: #eaddd7 !important;
-                    border-color: #000000 !important;
-                    color: #000000 !important;
+                    border-color: #67513a !important;
+                    color: #2C1810 !important;
                 }
 
                 .tunnl-btn-primary:hover {
                     background: #d2bab0 !important;
-                    border-color: #000000 !important;
-                    color: #000000 !important;
+                    border-color: #67513a !important;
+                    color: #2C1810 !important;
                 }
 
                 .tunnl-bypass-link {
@@ -348,7 +377,6 @@ class TunnlContent {
                     text-decoration: underline;
                     font-size: 16px;
                     font-weight: 400;
-                    font-style: italic;
                     letter-spacing: 0.3px;
                     transition: all 0.2s ease;
                 }
@@ -362,10 +390,10 @@ class TunnlContent {
                 @media (max-width: 420px) {
                     .tunnl-modal-content {
                         padding: 20px;
-                        margin-top: 140px; /* More space for bigger image on mobile */
+                        margin-top: 180px; /* More space for higher positioned image on mobile */
                     }
                     .tunnl-image-container {
-                        top: -160px; /* Adjust for bigger image on smaller screens */
+                        top: -200px; /* Adjust for higher positioned image on smaller screens */
                     }
                     .tunnl-access-denied-banner {
                         width: 200px; /* Bigger image on mobile too */
@@ -392,7 +420,7 @@ class TunnlContent {
                     src: url('${chrome.runtime.getURL('Excalifont Regular.woff2')}') format('woff2');
                     font-weight: normal;
                     font-style: normal;
-                    font-display: swap;
+                    font-display: block;
                 }
                 
                 #tunnl-block-modal,
@@ -400,50 +428,109 @@ class TunnlContent {
                 #tunnl-block-modal .tunnl-explanation-text,
                 #tunnl-block-modal .tunnl-btn,
                 #tunnl-block-modal .tunnl-bypass-link a {
-                    font-family: 'Excalifont', 'Kalam', cursive, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                    font-family: 'Excalifont', 'Times New Roman', 'Georgia', 'Times', serif !important;
                 }
             `;
             document.head.appendChild(fontStyle);
             
-            // Force font load and apply
-            const fontLoad = new FontFace('Excalifont', `url('${chrome.runtime.getURL('Excalifont Regular.woff2')}')`);
-            fontLoad.load().then(() => {
-                console.log('✅ Excalifont loaded successfully');
-                document.fonts.add(fontLoad);
-                // Force re-render of all modal text elements
-                const modal = document.getElementById('tunnl-block-modal');
-                if (modal) {
-                    // Apply font to all text elements
+            // Try multiple font loading approaches
+            const fontUrl = chrome.runtime.getURL('Excalifont Regular.woff2');
+            console.log('🔍 Loading Excalifont from URL:', fontUrl);
+            
+            // Test if font URL is accessible
+            fetch(fontUrl, { method: 'HEAD' })
+                .then(response => {
+                    console.log('🔍 Font URL accessibility test:', response.status, response.statusText);
+                    if (!response.ok) {
+                        console.error('❌ Font URL not accessible:', response.status);
+                        // Skip font loading and use fallback
+                        this.createModalWithFallbackFont(modal, blockedUrl);
+                        return;
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Font URL fetch error:', error);
+                    console.log('🔍 Trying alternative font loading method...');
+                    // Skip font loading and use fallback
+                    this.createModalWithFallbackFont(modal, blockedUrl);
+                    return;
+                });
+            
+            // Try CSS-only font loading (more reliable)
+            console.log('🎨 Attempting CSS-only font loading...');
+            
+            // Create modal immediately with CSS font-face
+            document.body.appendChild(modal);
+            
+            // Wait a bit for CSS font to load, then check if it's available
+            setTimeout(() => {
+                const testElement = document.createElement('span');
+                testElement.style.fontFamily = 'Excalifont';
+                testElement.style.fontSize = '16px';
+                testElement.textContent = 'Test';
+                testElement.style.visibility = 'hidden';
+                testElement.style.position = 'absolute';
+                document.body.appendChild(testElement);
+                
+                const computedStyle = window.getComputedStyle(testElement);
+                const fontFamily = computedStyle.fontFamily;
+                
+                document.body.removeChild(testElement);
+                
+                if (fontFamily.includes('Excalifont')) {
+                    console.log('✅ Excalifont loaded via CSS successfully');
+                    this.setupModalEventListeners(modal, blockedUrl);
+                } else {
+                    console.log('❌ Excalifont not loaded via CSS, using fallback');
+                    // Apply fallback font
                     const textElements = modal.querySelectorAll('*');
                     textElements.forEach(el => {
-                        el.style.fontFamily = 'Excalifont, Kalam, cursive, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
+                        el.style.fontFamily = 'Times New Roman, Georgia, Times, serif';
                     });
-                    // Force a reflow
-                    modal.offsetHeight;
+                    this.setupModalEventListeners(modal, blockedUrl);
                 }
-            }).catch((error) => {
-                console.log('❌ Excalifont failed to load:', error);
-            });
+            }, 100);
 
             document.head.appendChild(style);
-            document.body.appendChild(modal);
-
-            console.log('✅ Modal created and added to page');
-            console.log('🔍 Debugging modal elements:');
-            console.log('- Modal element:', modal);
-            console.log('- Access denied banner:', modal.querySelector('.tunnl-access-denied-banner'));
-            console.log('- Beaver illustration:', modal.querySelector('.tunnl-beaver-illustration'));
-            console.log('- Buttons:', modal.querySelectorAll('.tunnl-btn'));
-            console.log('- Access denied src:', modal.querySelector('.tunnl-access-denied-banner')?.src);
-            console.log('- Beaver illustration src:', modal.querySelector('.tunnl-beaver-illustration')?.src);
-            console.log('- Modal HTML structure:', modal.innerHTML.substring(0, 200) + '...');
-
-            // Setup event listeners
-            this.setupModalEventListeners(modal, blockedUrl);
 
         } catch (error) {
             console.log('❌ Failed to create modal (likely CSP blocking):', error.message);
         }
+    }
+
+    createModalWithFont(modal, blockedUrl) {
+        console.log('🎨 Creating modal with Excalifont loaded');
+        document.body.appendChild(modal);
+        
+        // Force font application
+        const textElements = modal.querySelectorAll('*');
+        textElements.forEach(el => {
+            el.style.fontFamily = 'Excalifont, Kalam, cursive, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
+            el.style.fontDisplay = 'block';
+        });
+        
+        // Force reflow
+        modal.offsetHeight;
+        
+        this.setupModalEventListeners(modal, blockedUrl);
+        console.log('✅ Modal created with Excalifont');
+    }
+
+    createModalWithFallbackFont(modal, blockedUrl) {
+        console.log('🎨 Creating modal with fallback font');
+        
+        // Add fallback font styles
+        const fallbackStyle = document.createElement('style');
+        fallbackStyle.textContent = `
+            #tunnl-block-modal * {
+                font-family: 'Times New Roman', 'Georgia', 'Times', serif !important;
+            }
+        `;
+        document.head.appendChild(fallbackStyle);
+        
+        document.body.appendChild(modal);
+        this.setupModalEventListeners(modal, blockedUrl);
+        console.log('✅ Modal created with fallback font');
     }
 
     setupModalEventListeners(modal, blockedUrl) {
@@ -612,8 +699,13 @@ class TunnlContent {
     }
 }
 
-// Initialize content script
-new TunnlContent();
+// Initialize content script only if not already initialized
+if (!window.tunnlContentInstance) {
+    window.tunnlContentInstance = new TunnlContent();
+    console.log('✅ TunnlContent instance created');
+} else {
+    console.log('⚠️ TunnlContent instance already exists, skipping');
+}
 
 // Test function to manually trigger modal (for debugging)
 window.testTunnlModal = function() {

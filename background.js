@@ -618,6 +618,54 @@ class TunnlBackground {
         }
     }
 
+    async sendMessageWithRetry(tabId, message, maxRetries = 3) {
+        console.log('📤 Sending message to content script:', {
+            tabId,
+            messageType: message.type,
+            maxRetries
+        });
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // Check if tab still exists
+                const tab = await chrome.tabs.get(tabId);
+                if (!tab) {
+                    console.log('❌ Tab no longer exists:', tabId);
+                    return;
+                }
+
+                // Try to send message
+                await chrome.tabs.sendMessage(tabId, message);
+                console.log('✅ Message sent successfully on attempt', attempt);
+                return;
+
+            } catch (error) {
+                console.log(`❌ Attempt ${attempt} failed:`, error.message);
+                
+                if (attempt < maxRetries) {
+                    // Wait before retry (exponential backoff)
+                    const delay = Math.pow(2, attempt) * 100; // 200ms, 400ms, 800ms
+                    console.log(`⏳ Waiting ${delay}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    
+                    // Try to inject content script if it's not loaded
+                    try {
+                        await chrome.scripting.executeScript({
+                            target: { tabId: tabId },
+                            files: ['content.js']
+                        });
+                        console.log('📄 Content script injected on retry attempt', attempt);
+                    } catch (injectError) {
+                        console.log('⚠️ Failed to inject content script:', injectError.message);
+                    }
+                } else {
+                    console.log('❌ All retry attempts failed, giving up');
+                    console.log('🔍 Final error:', error.message);
+                }
+            }
+        }
+    }
+
     async validateTask(taskText) {
         // Delegate to TaskValidator
         return await this.taskValidator.validateTask(taskText);
@@ -625,6 +673,15 @@ class TunnlBackground {
 
     async analyzeUrl(url) {
         console.log('🔍 Analyzing URL:', url);
+        
+        // Mock mode - block everything for testing
+        console.log('🎭 Mock mode enabled - blocking all URLs for testing');
+        return { 
+            shouldBlock: true, 
+            reason: 'Mock mode - testing block screen', 
+            activityUnderstanding: 'Mock mode active for testing', 
+            confidence: 1.0 
+        };
         
         if (!this.settings.openaiApiKey) {
             console.log('❌ Extension not configured - API key missing');
@@ -720,11 +777,9 @@ class TunnlBackground {
 
             const data = await response.json();
             const content = data.choices[0].message.content;
-            console.log('🤖 OpenAI raw response:', content);
 
             try {
                 const result = JSON.parse(content);
-                console.log('✅ Successfully parsed AI response:', result);
                 
                 const reason = (result.reason || '').toString();
                 let confidence = typeof result.confidence === 'number' ? result.confidence : 0.5;
@@ -749,7 +804,6 @@ class TunnlBackground {
                     confidence
                 };
                 
-                console.log('🎯 Final analysis decision:', finalResult);
                 return finalResult;
                 
             } catch (parseError) {
@@ -826,31 +880,17 @@ class TunnlBackground {
             this.lastSuggestionPopupMs = now;
 
 
-            // Ask content script to show modal overlay
-            try {
-                if (typeof tabId === 'number') {
-                    console.log('📤 Sending modal message to content script:', {
-                        tabId,
-                        url,
-                        message,
-                        activityUnderstanding
-                    });
-                    
-                    await chrome.tabs.sendMessage(tabId, {
-                        type: 'SHOW_BLOCK_MODAL',
-                        url: url,
-                        message: reason,
-                        activityUnderstanding: activityUnderstanding,
-                        currentTask: this.settings.currentTask?.text || 'No active task'
-                    });
-                    
-                    console.log('✅ Modal message sent successfully');
-                } else {
-                    console.log('⚠️ Invalid tabId, cannot send modal message');
-                }
-            } catch (msgErr) {
-                console.log('❌ Failed to send modal message:', msgErr.message);
-                // Content script may not be ready or site CSP blocks injection; ignore
+            // Ask content script to show modal overlay with retry logic
+            if (typeof tabId === 'number') {
+                await this.sendMessageWithRetry(tabId, {
+                    type: 'SHOW_BLOCK_MODAL',
+                    url: url,
+                    message: reason,
+                    activityUnderstanding: activityUnderstanding,
+                    currentTask: this.settings.currentTask?.text || 'No active task'
+                });
+            } else {
+                console.log('⚠️ Invalid tabId, cannot send modal message');
             }
 
             // Nudge user via badge to click the extension action

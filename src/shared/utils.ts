@@ -1,38 +1,32 @@
 // Shared utility functions for tunnl.ai Chrome Extension
 
-import { SYSTEM_URLS, TIMING_CONFIG } from './constants.js';
+import { SYSTEM_URLS, TIMING_CONFIG, type AnalysisResult, type TunnlSettings } from './constants.js';
 
 /**
  * Check if a URL is a system URL that should be skipped
- * @param {string} url - The URL to check
- * @returns {boolean} - True if it's a system URL
  */
-export function isSystemUrl(url) {
+export function isSystemUrl(url: string): boolean {
     if (!url || typeof url !== 'string') return false;
     return SYSTEM_URLS.some(systemUrl => url.toLowerCase().startsWith(systemUrl));
 }
 
 /**
  * Escape HTML characters to prevent XSS
- * @param {string} text - Text to escape
- * @returns {string} - Escaped text
  */
-export function escapeHtml(text) {
+export function escapeHtml(text: string): string {
     if (!text || typeof text !== 'string') return '';
     return text.replace(/[&<>"]/g, c => ({
         '&': '&amp;',
         '<': '&lt;',
         '>': '&gt;',
         '"': '&quot;'
-    }[c]));
+    }[c] || c));
 }
 
 /**
  * Format timestamp to human-readable format
- * @param {number} timestamp - Unix timestamp
- * @returns {string} - Formatted time string
  */
-export function formatTime(timestamp) {
+export function formatTime(timestamp: number): string {
     if (!timestamp || typeof timestamp !== 'number') return 'Unknown';
     
     const now = Date.now();
@@ -51,10 +45,8 @@ export function formatTime(timestamp) {
 
 /**
  * Format duration in milliseconds to human-readable format
- * @param {number} ms - Duration in milliseconds
- * @returns {string} - Formatted duration string
  */
-export function formatDuration(ms) {
+export function formatDuration(ms: number): string {
     if (!ms || typeof ms !== 'number') return '0m';
     
     const minutes = Math.floor(ms / 60000);
@@ -70,13 +62,13 @@ export function formatDuration(ms) {
 
 /**
  * Debounce function calls
- * @param {Function} func - Function to debounce
- * @param {number} wait - Wait time in milliseconds
- * @returns {Function} - Debounced function
  */
-export function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
+export function debounce<T extends (...args: any[]) => any>(
+    func: T, 
+    wait: number
+): (...args: Parameters<T>) => void {
+    let timeout: NodeJS.Timeout;
+    return function executedFunction(...args: Parameters<T>) {
         const later = () => {
             clearTimeout(timeout);
             func(...args);
@@ -88,13 +80,13 @@ export function debounce(func, wait) {
 
 /**
  * Retry a function with exponential backoff
- * @param {Function} fn - Function to retry
- * @param {number} maxRetries - Maximum number of retries
- * @param {number} baseDelay - Base delay in milliseconds
- * @returns {Promise} - Promise that resolves with function result
  */
-export async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
-    let lastError;
+export async function retryWithBackoff<T>(
+    fn: () => Promise<T>, 
+    maxRetries: number = 3, 
+    baseDelay: number = 1000
+): Promise<T> {
+    let lastError: Error;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -104,15 +96,15 @@ export async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
             }
             return result;
         } catch (error) {
-            lastError = error;
-            console.log(`❌ Attempt ${attempt} failed:`, error.message);
+            lastError = error as Error;
+            console.log(`❌ Attempt ${attempt} failed:`, lastError.message);
             
             // Don't retry on certain errors
-            if (error.message.includes('401') || 
-                error.message.includes('403') || 
-                error.message.includes('429')) {
+            if (lastError.message.includes('401') || 
+                lastError.message.includes('403') || 
+                lastError.message.includes('429')) {
                 console.log('🚫 Not retrying due to auth/rate limit error');
-                throw error;
+                throw lastError;
             }
             
             // Don't retry on the last attempt
@@ -128,15 +120,13 @@ export async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
         }
     }
     
-    throw lastError;
+    throw lastError!;
 }
 
 /**
  * Normalize URL for comparison
- * @param {string} url - URL to normalize
- * @returns {string} - Normalized URL
  */
-export function normalizeUrl(url) {
+export function normalizeUrl(url: string): string {
     if (!url || typeof url !== 'string') return '';
     
     try {
@@ -149,10 +139,8 @@ export function normalizeUrl(url) {
 
 /**
  * Extract hostname from URL
- * @param {string} url - URL to extract hostname from
- * @returns {string} - Hostname or empty string
  */
-export function extractHostname(url) {
+export function extractHostname(url: string): string {
     if (!url || typeof url !== 'string') return '';
     
     try {
@@ -160,17 +148,14 @@ export function extractHostname(url) {
     } catch {
         // Fallback for invalid URLs
         const match = url.match(/^https?:\/\/([^\/]+)/);
-        return match ? match[1].toLowerCase() : '';
+        return match && match[1] ? match[1].toLowerCase() : '';
     }
 }
 
 /**
  * Check if two URLs are from the same origin
- * @param {string} url1 - First URL
- * @param {string} url2 - Second URL
- * @returns {boolean} - True if same origin
  */
-export function isSameOrigin(url1, url2) {
+export function isSameOrigin(url1: string, url2: string): boolean {
     if (!url1 || !url2) return false;
     
     try {
@@ -184,32 +169,23 @@ export function isSameOrigin(url1, url2) {
 
 /**
  * Generate a cache key for URL analysis
- * @param {string} url - URL to analyze
- * @param {string} taskText - Current task text
- * @param {Array} recentUrls - Recent URLs for context
- * @returns {string} - Cache key
  */
-export function generateCacheKey(url, taskText, recentUrls = []) {
+export function generateCacheKey(url: string, taskText: string, recentUrls: string[] = []): string {
     const contextKey = recentUrls.slice(0, 3).join('|');
     return `${url}||${taskText || ''}||${contextKey}`;
 }
 
 /**
  * Validate OpenAI API key format
- * @param {string} apiKey - API key to validate
- * @returns {boolean} - True if valid format
  */
-export function isValidApiKeyFormat(apiKey) {
-    return apiKey && typeof apiKey === 'string' && apiKey.startsWith('sk-');
+export function isValidApiKeyFormat(apiKey: string): boolean {
+    return Boolean(apiKey && typeof apiKey === 'string' && apiKey.startsWith('sk-'));
 }
 
 /**
  * Mask sensitive data for logging
- * @param {string} data - Data to mask
- * @param {number} visibleChars - Number of characters to show at the end
- * @returns {string} - Masked data
  */
-export function maskSensitiveData(data, visibleChars = 4) {
+export function maskSensitiveData(data: string, visibleChars: number = 4): string {
     if (!data || typeof data !== 'string') return '***';
     if (data.length <= visibleChars) return '***';
     return '***' + data.slice(-visibleChars);
@@ -217,16 +193,13 @@ export function maskSensitiveData(data, visibleChars = 4) {
 
 /**
  * Clean data for storage to prevent quota issues
- * @param {Object} data - Data to clean
- * @param {Object} limits - Storage limits
- * @returns {Object} - Cleaned data
  */
-export function cleanDataForStorage(data, limits = {}) {
+export function cleanDataForStorage(data: TunnlSettings, limits: Partial<typeof import('./constants.js').STORAGE_LIMITS> = {}): TunnlSettings {
     const cleaned = { ...data };
     
     // Limit blocked sites
     if (cleaned.blockedSites && Array.isArray(cleaned.blockedSites)) {
-        const maxBlocked = limits.maxBlockedSites || 50;
+        const maxBlocked = limits.MAX_BLOCKED_SITES || 50;
         if (cleaned.blockedSites.length > maxBlocked) {
             cleaned.blockedSites = cleaned.blockedSites.slice(-maxBlocked);
         }
@@ -234,7 +207,7 @@ export function cleanDataForStorage(data, limits = {}) {
     
     // Limit tasks
     if (cleaned.tasks && Array.isArray(cleaned.tasks)) {
-        const maxTasks = limits.maxTasks || 20;
+        const maxTasks = limits.MAX_TASKS || 20;
         if (cleaned.tasks.length > maxTasks) {
             cleaned.tasks = cleaned.tasks.slice(-maxTasks);
         }
@@ -242,7 +215,7 @@ export function cleanDataForStorage(data, limits = {}) {
     
     // Limit feedback
     if (cleaned.feedback && Array.isArray(cleaned.feedback)) {
-        const maxFeedback = limits.maxFeedback || 200;
+        const maxFeedback = limits.MAX_FEEDBACK || 200;
         if (cleaned.feedback.length > maxFeedback) {
             cleaned.feedback = cleaned.feedback.slice(-maxFeedback);
         }
@@ -253,21 +226,47 @@ export function cleanDataForStorage(data, limits = {}) {
 
 /**
  * Calculate focus score based on blocked vs analyzed URLs
- * @param {number} blockedCount - Number of blocked URLs
- * @param {number} analyzedCount - Number of analyzed URLs
- * @returns {number} - Focus score percentage
  */
-export function calculateFocusScore(blockedCount, analyzedCount) {
+export function calculateFocusScore(blockedCount: number, analyzedCount: number): number {
     if (!analyzedCount || analyzedCount === 0) return 0;
     return Math.min(100, Math.round((blockedCount / analyzedCount) * 100));
 }
 
 /**
  * Calculate estimated time saved
- * @param {number} blockedCount - Number of blocked URLs
- * @param {number} avgTimePerSite - Average time per site in minutes
- * @returns {number} - Estimated time saved in minutes
  */
-export function calculateTimeSaved(blockedCount, avgTimePerSite = 2.5) {
+export function calculateTimeSaved(blockedCount: number, avgTimePerSite: number = 2.5): number {
     return Math.round(blockedCount * avgTimePerSite);
+}
+
+/**
+ * Type guard to check if a value is a valid AnalysisResult
+ */
+export function isAnalysisResult(value: any): value is AnalysisResult {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof value.shouldBlock === 'boolean' &&
+        typeof value.reason === 'string' &&
+        typeof value.activityUnderstanding === 'string' &&
+        typeof value.confidence === 'number'
+    );
+}
+
+/**
+ * Type guard to check if a value is a valid TunnlSettings
+ */
+export function isTunnlSettings(value: any): value is TunnlSettings {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof value.openaiApiKey === 'string' &&
+        Array.isArray(value.tasks) &&
+        typeof value.extensionEnabled === 'boolean' &&
+        Array.isArray(value.blockedSites) &&
+        typeof value.stats === 'object' &&
+        Array.isArray(value.allowlist) &&
+        typeof value.taskValidationEnabled === 'boolean' &&
+        Array.isArray(value.feedback)
+    );
 }

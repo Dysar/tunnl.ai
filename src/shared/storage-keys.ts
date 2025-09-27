@@ -21,13 +21,13 @@ export const STORAGE_KEYS = {
     ONE_TIME_BYPASS: 'oneTimeBypass',
     LOCK_END_TIME: 'lockEndTime',
     LOCKED_TASK_ID: 'lockedTaskId'
-};
+} as const;
 
 // Storage areas
 export const STORAGE_AREAS = {
     LOCAL: 'local',
     SYNC: 'sync'
-};
+} as const;
 
 // Default storage configuration
 export const STORAGE_CONFIG = {
@@ -54,4 +54,35 @@ export const STORAGE_CONFIG = {
         STORAGE_KEYS.LOCK_END_TIME,
         STORAGE_KEYS.LOCKED_TASK_ID
     ]
-};
+} as const;
+
+// Type definitions
+export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS];
+export type StorageArea = typeof STORAGE_AREAS[keyof typeof STORAGE_AREAS];
+
+export interface StorageInfo {
+    local: {
+        size: number;
+        keys: number;
+        limit: number;
+    };
+    sync: {
+        size: number;
+        keys: number;
+        limit: number;
+    };
+}
+
+export interface TemporaryUnblock {
+    url: string;
+    until: number;
+}
+
+export interface OneTimeBypass {
+    url: string;
+}
+
+export interface LockInfo {
+    lockEndTime: number;
+    lockedTaskId: string;
+}

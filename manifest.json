@@ -14,25 +14,25 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "src/background/background.js"
+    "service_worker": "dist/background/background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["src/content/content.js"],
+      "js": ["dist/content/content.js"],
       "run_at": "document_start"
     }
   ],
   "action": {
-    "default_popup": "src/popup/popup.html",
+    "default_popup": "popup/popup.html",
     "default_title": "tunnl.ai Settings"
   },
-  "options_page": "src/options/options.html",
+  "options_page": "options/options.html",
   "web_accessible_resources": [
     {
       "resources": [
-        "src/blocked/blocked.html",
-        "src/blocked/blocked.js",
+        "blocked/blocked.html",
+        "dist/blocked/blocked.js",
         "assets/images/access_denied.png",
         "assets/images/beaver.png",
         "assets/images/blocked_beaver.png",

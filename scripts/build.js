@@ -21,9 +21,24 @@ async function build() {
         await fs.ensureDir(BUILD_DIR);
         console.log('✅ Cleaned build directory');
 
-        // Copy source files
-        await fs.copy(SRC_DIR, path.join(BUILD_DIR, SRC_DIR));
-        console.log('✅ Copied source files');
+        // Copy HTML and CSS files from src to dist
+        const htmlCssFiles = [
+            'src/popup/popup.html',
+            'src/popup/popup.css', 
+            'src/options/options.html',
+            'src/blocked/blocked.html',
+            'src/blocked/blocked.css'
+        ];
+        
+        for (const file of htmlCssFiles) {
+            if (await fs.pathExists(file)) {
+                const relativePath = path.relative('src', file);
+                const destPath = path.join(BUILD_DIR, relativePath);
+                await fs.ensureDir(path.dirname(destPath));
+                await fs.copy(file, destPath);
+                console.log(`✅ Copied ${file} to ${destPath}`);
+            }
+        }
 
         // Copy assets
         await fs.copy(ASSETS_DIR, path.join(BUILD_DIR, ASSETS_DIR));

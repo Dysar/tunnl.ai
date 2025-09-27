@@ -13,6 +13,7 @@ class TunnlPopup {
         await this.loadSettings();
         this.setupEventListeners();
         this.updateUI();
+        await this.updateStats();
     }
 
     // Send a runtime message with retries to handle MV3 service worker spin-up
@@ -571,21 +572,39 @@ class TunnlPopup {
             this.setCurrentTask(firstTask);
         }
 
-        const currentTaskText = this.settings.currentTask?.text;
-        console.log('Current task text:', currentTaskText);
-        console.log('Active tasks:', activeTasks);
+        const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
+        console.log('🔍 Current task text:', currentTaskText);
+        console.log('🔍 Active tasks:', activeTasks);
+        console.log('🔍 Settings currentTask:', this.settings.currentTask);
 
-        // Render active tasks
-        activeTasks.forEach((task) => {
+        // Reorder active tasks: current task first, then others
+        const currentTask = activeTasks.find(task => (task.text || task) === currentTaskText);
+        const otherTasks = activeTasks.filter(task => (task.text || task) !== currentTaskText);
+        const reorderedTasks = currentTask ? [currentTask, ...otherTasks] : activeTasks;
+
+        // Render active tasks in reordered sequence
+        reorderedTasks.forEach((task, index) => {
             const taskItem = document.createElement('div');
             taskItem.className = 'task-item';
             
             // Add active class if this is the current task
             const taskText = task.text || task;
-            console.log('Comparing:', currentTaskText, '===', taskText, '?', currentTaskText === taskText);
-            if (currentTaskText === taskText) {
+            const normalizedCurrentTask = typeof currentTaskText === 'object' ? currentTaskText.text : currentTaskText;
+            const normalizedTaskText = typeof taskText === 'object' ? taskText.text : taskText;
+            console.log('🔍 Comparing:', normalizedCurrentTask, '===', normalizedTaskText, '?', normalizedCurrentTask === normalizedTaskText);
+            if (normalizedCurrentTask === normalizedTaskText) {
                 taskItem.classList.add('active');
-                console.log('Added active class to task:', taskText);
+                console.log('✅ Added active class to task:', normalizedTaskText);
+                
+                // Add move-to-top animation if this task moved to the top
+                if (index === 0) {
+                    taskItem.classList.add('moving-to-top');
+                    setTimeout(() => {
+                        taskItem.classList.remove('moving-to-top');
+                    }, 800); // Match the CSS animation duration
+                }
+            } else {
+                console.log('❌ No active class for task:', normalizedTaskText);
             }
 
             // Create radio button
@@ -595,7 +614,7 @@ class TunnlPopup {
             // Create task text
             const taskTextElement = document.createElement('div');
             taskTextElement.className = 'task-text';
-            taskTextElement.textContent = taskText;
+            taskTextElement.textContent = normalizedTaskText;
 
             // Create delete button
             const deleteButton = document.createElement('button');
@@ -613,17 +632,29 @@ class TunnlPopup {
             // Add click handler for delete button (stop propagation to prevent task selection)
             deleteButton.addEventListener('click', (e) => {
                 e.stopPropagation(); // Prevent task selection when clicking delete
-                this.deleteTaskFromList(taskText);
+                this.deleteTaskFromList(normalizedTaskText);
             });
 
-            // Add click handler for the task text (not the delete button)
-            taskTextElement.addEventListener('click', () => {
-                if (currentTaskText === taskText) {
+            // Add click handler for radio button (completion for all tasks)
+            radio.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent task selection when clicking radio
+                // Complete the task regardless of whether it's current or not
+                this.completeTask(normalizedTaskText);
+            });
+
+            // Add click handler for the entire task item (except buttons)
+            taskItem.addEventListener('click', (e) => {
+                // Don't trigger if clicking on buttons
+                if (e.target.closest('.task-delete-btn') || e.target.closest('.task-radio')) {
+                    return;
+                }
+                
+                if (normalizedCurrentTask === normalizedTaskText) {
                     // If clicking on current task, show detail view
-                    this.showTaskDetail(task.id || taskText);
+                    this.showTaskDetail(task.id || normalizedTaskText);
                 } else {
                     // Otherwise, set as current task
-                    this.setCurrentTask(taskText);
+                    this.setCurrentTask(normalizedTaskText);
                 }
             });
 
@@ -640,7 +671,12 @@ class TunnlPopup {
 
             // Create radio button with checkmark
             const radio = document.createElement('div');
-            radio.className = 'task-radio';
+            radio.className = 'task-radio completed';
+            radio.innerHTML = `
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            `;
 
             // Create task text
             const taskText = document.createElement('div');
@@ -664,6 +700,12 @@ class TunnlPopup {
             deleteButton.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.deleteTaskFromList(task.text || task);
+            });
+
+            // Add click handler for radio button (unselect to move back to active)
+            radio.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.reverseTask(task.text || task);
             });
 
             taskItem.appendChild(radio);
@@ -707,13 +749,38 @@ class TunnlPopup {
 
             if (response?.success) {
                 this.settings.currentTask = response.currentTask || { text: taskText, index: taskIndex, setAt: Date.now() };
+                console.log('✅ Current task set to:', this.settings.currentTask);
+                
+                // Update UI first to get the new DOM structure
                 this.updateUI();
+                
+                // Then add animation to the newly rendered current task
+                setTimeout(() => {
+                    this.animateTaskSelection(taskText);
+                }, 50);
             } else {
                 console.error('Failed to set current task:', response?.error);
             }
         } catch (e) {
             console.error('SET_CURRENT_TASK error', e);
         }
+    }
+
+    animateTaskSelection(taskText) {
+        // Find the task element that's becoming current
+        const taskItems = document.querySelectorAll('.task-item');
+        taskItems.forEach(item => {
+            const textElement = item.querySelector('.task-text');
+            if (textElement && textElement.textContent === taskText) {
+                // Add animation classes
+                item.classList.add('becoming-active');
+                
+                // Remove animation classes after animation completes
+                setTimeout(() => {
+                    item.classList.remove('becoming-active');
+                }, 600); // Match the CSS animation duration
+            }
+        });
     }
 
     async clearCurrentTask(silent = false) {
@@ -955,6 +1022,84 @@ class TunnlPopup {
             } catch (error) {
                 console.error('Error deleting task:', error);
             }
+        }
+    }
+
+    async completeTask(taskText) {
+        try {
+            // Find the task and mark it as completed
+            const taskIndex = this.settings.tasks.findIndex(task => {
+                const taskTextToCompare = task.text || task;
+                return taskTextToCompare === taskText;
+            });
+
+            if (taskIndex !== -1) {
+                // Convert string task to object if needed
+                if (typeof this.settings.tasks[taskIndex] === 'string') {
+                    this.settings.tasks[taskIndex] = {
+                        text: this.settings.tasks[taskIndex],
+                        completed: true,
+                        completedAt: Date.now()
+                    };
+                } else {
+                    this.settings.tasks[taskIndex].completed = true;
+                    this.settings.tasks[taskIndex].completedAt = Date.now();
+                }
+
+                // If this was the current task, clear it
+                if (this.settings.currentTask?.text === taskText) {
+                    this.settings.currentTask = null;
+                    // Also clear it in the background script
+                    await this.sendMessageWithRetry({
+                        type: 'CLEAR_CURRENT_TASK'
+                    });
+                }
+
+                // Save settings
+                await this.saveSettings();
+
+                // Update the UI
+                this.updateTaskList();
+                this.updateUI();
+
+                console.log('✅ Task completed:', taskText);
+            }
+        } catch (error) {
+            console.error('Error completing task:', error);
+        }
+    }
+
+    async reverseTask(taskText) {
+        try {
+            // Find the task and mark it as not completed
+            const taskIndex = this.settings.tasks.findIndex(task => {
+                const taskTextToCompare = task.text || task;
+                return taskTextToCompare === taskText;
+            });
+
+            if (taskIndex !== -1) {
+                // Convert string task to object if needed
+                if (typeof this.settings.tasks[taskIndex] === 'string') {
+                    this.settings.tasks[taskIndex] = {
+                        text: this.settings.tasks[taskIndex],
+                        completed: false
+                    };
+                } else {
+                    this.settings.tasks[taskIndex].completed = false;
+                    delete this.settings.tasks[taskIndex].completedAt;
+                }
+
+                // Save settings
+                await this.saveSettings();
+
+                // Update the UI
+                this.updateTaskList();
+                this.updateUI();
+
+                console.log('🔄 Task moved back to active:', taskText);
+            }
+        } catch (error) {
+            console.error('Error reversing task:', error);
         }
     }
 

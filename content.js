@@ -160,7 +160,9 @@ class TunnlContent {
             modal.innerHTML = `
                 <div class="tunnl-modal-overlay">
                     <div class="tunnl-modal-content">
-                        <img src="${chrome.runtime.getURL('assets/access_denied.png')}" alt="Access Denied Banner" class="tunnl-access-denied-banner">
+                        <div class="tunnl-image-container">
+                            <img src="${chrome.runtime.getURL('assets/access_denied.png')}" alt="Access Denied Banner" class="tunnl-access-denied-banner">
+                        </div>
                         
                         <div class="tunnl-explanation-box">
                             <p class="tunnl-explanation-text">${this.escapeHtml(reasonMessage || 'This site may distract you from your current task.')}</p>
@@ -219,6 +221,7 @@ class TunnlContent {
                     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.1);
                     animation: modalSlideIn 0.3s ease-out;
                     position: relative;
+                    margin-top: 160px; /* Even more space to prevent overlap */
                 }
 
                 @keyframes modalSlideIn {
@@ -232,13 +235,20 @@ class TunnlContent {
                     }
                 }
 
+                .tunnl-image-container {
+                    position: absolute;
+                    top: -180px; /* Position higher to prevent overlap with green text */
+                    left: 50%;
+                    transform: translateX(-50%);
+                    z-index: 10;
+                }
+
                 .tunnl-access-denied-banner {
-                    width: 100%;
-                    max-width: 400px;
+                    width: 280px; /* Bigger image */
                     height: auto;
-                    margin-bottom: 15px;
                     display: block;
                     border-radius: 8px;
+                    /* Removed box-shadow */
                 }
 
                 .tunnl-beaver-container {
@@ -307,22 +317,26 @@ class TunnlContent {
 
                 .tunnl-btn-secondary {
                     background: #eaddd7 !important;
-                    border-color: #67513a !important;
-                    color: #67513a !important;
+                    border-color: #000000 !important;
+                    color: #000000 !important;
                 }
 
                 .tunnl-btn-secondary:hover {
                     background: #d2bab0 !important;
+                    border-color: #000000 !important;
+                    color: #000000 !important;
                 }
 
                 .tunnl-btn-primary {
                     background: #eaddd7 !important;
-                    border-color: #67513a !important;
-                    color: #67513a !important;
+                    border-color: #000000 !important;
+                    color: #000000 !important;
                 }
 
                 .tunnl-btn-primary:hover {
                     background: #d2bab0 !important;
+                    border-color: #000000 !important;
+                    color: #000000 !important;
                 }
 
                 .tunnl-bypass-link {
@@ -348,6 +362,13 @@ class TunnlContent {
                 @media (max-width: 420px) {
                     .tunnl-modal-content {
                         padding: 20px;
+                        margin-top: 140px; /* More space for bigger image on mobile */
+                    }
+                    .tunnl-image-container {
+                        top: -160px; /* Adjust for bigger image on smaller screens */
+                    }
+                    .tunnl-access-denied-banner {
+                        width: 200px; /* Bigger image on mobile too */
                     }
                     .tunnl-action-buttons {
                         flex-direction: column;
@@ -371,7 +392,7 @@ class TunnlContent {
                     src: url('${chrome.runtime.getURL('Excalifont Regular.woff2')}') format('woff2');
                     font-weight: normal;
                     font-style: normal;
-                    font-display: block;
+                    font-display: swap;
                 }
                 
                 #tunnl-block-modal,
@@ -384,10 +405,22 @@ class TunnlContent {
             `;
             document.head.appendChild(fontStyle);
             
-            // Force font load
+            // Force font load and apply
             const fontLoad = new FontFace('Excalifont', `url('${chrome.runtime.getURL('Excalifont Regular.woff2')}')`);
             fontLoad.load().then(() => {
                 console.log('✅ Excalifont loaded successfully');
+                document.fonts.add(fontLoad);
+                // Force re-render of all modal text elements
+                const modal = document.getElementById('tunnl-block-modal');
+                if (modal) {
+                    // Apply font to all text elements
+                    const textElements = modal.querySelectorAll('*');
+                    textElements.forEach(el => {
+                        el.style.fontFamily = 'Excalifont, Kalam, cursive, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
+                    });
+                    // Force a reflow
+                    modal.offsetHeight;
+                }
             }).catch((error) => {
                 console.log('❌ Excalifont failed to load:', error);
             });

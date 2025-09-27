@@ -35,6 +35,7 @@ class TunnlBackground {
         
         // Initialize statistics manager
         this.statsManager = new StatisticsManager();
+        await this.statsManager.init();
         
         this.setupEventListeners();
         this.setupNavigationListener();
@@ -274,9 +275,21 @@ class TunnlBackground {
                 break;
 
             case 'GET_STATISTICS':
+                console.log('📊 GET_STATISTICS requested, statsManager exists:', !!this.statsManager);
                 if (this.statsManager) {
                     const stats = this.statsManager.getFormattedStats();
+                    console.log('📊 Returning statistics:', stats);
                     sendResponse({ success: true, statistics: stats });
+                } else {
+                    console.error('📊 Statistics manager not initialized');
+                    sendResponse({ success: false, error: 'Statistics manager not initialized' });
+                }
+                break;
+
+            case 'RESET_STATISTICS':
+                if (this.statsManager) {
+                    await this.statsManager.resetAllStats();
+                    sendResponse({ success: true });
                 } else {
                     sendResponse({ success: false, error: 'Statistics manager not initialized' });
                 }
@@ -624,14 +637,15 @@ class TunnlBackground {
             return { shouldBlock: false, reason: 'Allowlisted site', activityUnderstanding: 'Site is in allowlist', confidence: 1.0 };
         }
 
-        const currentTaskText = this.settings.currentTask?.text?.trim();
-        if (!currentTaskText) {
+        const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
+        const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
+        if (!normalizedCurrentTaskText) {
             console.log('⚠️ No current task selected - allowing URL to avoid overblocking');
             return { shouldBlock: false, reason: 'No current task selected', activityUnderstanding: 'No active task', confidence: 0.5 };
         }
 
         console.log('📋 Analysis context:', {
-            currentTask: currentTaskText,
+            currentTask: normalizedCurrentTaskText,
             recentUrls: this.recentUrls,
             urlToAnalyze: url
         });
@@ -653,7 +667,7 @@ class TunnlBackground {
                                  You are a productivity assistant that helps users stay focused on their tasks. 
              Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
 
-             Current activities/tasks: "${currentTaskText}"
+             Current activities/tasks: "${normalizedCurrentTaskText}"
 
              Recent browsing context (last 5 URLs visited):
              ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}

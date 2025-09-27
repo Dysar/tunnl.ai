@@ -1,5 +1,6 @@
 // Statistics Manager for Dam.AI Extension
 // Handles tracking and calculation of extension statistics
+console.log('🔧 statistics.js file loaded');
 
 class StatisticsManager {
     constructor() {

@@ -147,10 +147,17 @@ body {
     position: relative;
 }
 
+.task-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
 .task-list-title {
     font-size: 14px;
     color: #eaddd7;
-    margin-bottom: 8px;
+    margin: 0;
     font-weight: 600;
 }
 
@@ -184,7 +191,75 @@ body {
     gap: 12px;
     border: 2px solid #67513a;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+/* Animation for task moving to top */
+@keyframes moveToTop {
+    0% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+        z-index: 1;
+    }
+    25% {
+        transform: translateY(-8px) scale(1.01);
+        opacity: 0.95;
+        z-index: 10;
+    }
+    50% {
+        transform: translateY(-12px) scale(1.02);
+        opacity: 0.9;
+        z-index: 10;
+    }
+    75% {
+        transform: translateY(-6px) scale(1.01);
+        opacity: 0.95;
+        z-index: 10;
+    }
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+        z-index: 1;
+    }
+}
+
+.task-item.moving-to-top {
+    animation: moveToTop 0.8s ease-in-out;
+    position: relative;
+}
+
+/* Animation for task becoming active */
+@keyframes becomeActive {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(121, 128, 77, 0.2);
+        background: #eaddd7;
+    }
+    25% {
+        transform: scale(1.01);
+        box-shadow: 0 4px 12px rgba(121, 128, 77, 0.4);
+        background: #79804d;
+    }
+    50% {
+        transform: scale(1.02);
+        box-shadow: 0 5px 15px rgba(121, 128, 77, 0.5);
+        background: #79804d;
+    }
+    75% {
+        transform: scale(1.01);
+        box-shadow: 0 4px 12px rgba(121, 128, 77, 0.4);
+        background: #79804d;
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 2px 8px rgba(121, 128, 77, 0.3);
+        background: #79804d;
+    }
+}
+
+.task-item.becoming-active {
+    animation: becomeActive 0.6s ease-in-out;
 }
 
 .task-item:hover {
@@ -192,14 +267,15 @@ body {
 }
 
 .task-item.active {
-    background: #79804d;
-    border-color: #000000;
-    border-width: 3px;
+    background: #79804d !important;
+    border-color: #000000 !important;
+    border-width: 3px !important;
+    box-shadow: 0 2px 8px rgba(121, 128, 77, 0.3) !important;
 }
 
 .task-item.active .task-text {
-    color: white;
-    font-weight: 700;
+    color: white !important;
+    font-weight: 700 !important;
 }
 
 .task-item.completed {
@@ -234,20 +310,22 @@ body {
     border-radius: 50%;
 }
 
-.task-item.completed .task-radio {
-    background: #67513a;
-    border-color: #000000;
+.task-radio.completed {
+    background: #4CAF50;
+    border-color: #4CAF50;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.task-item.completed .task-radio::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+.task-item.completed .task-radio {
+    background: #4CAF50;
+    border-color: #4CAF50;
     color: white;
-    font-size: 12px;
-    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .task-text {
@@ -264,22 +342,20 @@ body {
 
 /* Add Task Button - positioned in task list header */
 .btn-add {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border: 2px solid #67513a;
-    border-radius: 8px;
+    border-radius: 6px;
     background: #eaddd7;
     color: #2C1810;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: bold;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
-    position: absolute;
-    top: 8px;
-    right: 8px;
+    flex-shrink: 0;
 }
 
 .btn-add:hover {
@@ -473,6 +549,7 @@ body {
 .btn-secondary:hover {
     background: #5a6268;
 }
+
 
 .task-delete-btn {
     background: none;

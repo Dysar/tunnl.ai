@@ -1,4 +1,5 @@
 // Options page script for tunnl.ai Chrome Extension
+console.log('🔧 options.js file loaded');
 
 class TunnlOptions {
     constructor() {
@@ -15,9 +16,11 @@ class TunnlOptions {
     }
 
     async init() {
+        console.log('🔧 TunnlOptions init() called');
         await this.loadSettings();
         this.setupEventListeners();
         this.updateUI();
+        console.log('🔧 TunnlOptions init() completed');
     }
 
     async loadSettings() {
@@ -176,10 +179,19 @@ class TunnlOptions {
 
     async resetStats() {
         if (confirm('Are you sure you want to reset all statistics? This cannot be undone.')) {
-            this.settings.stats = { blockedCount: 0, analyzedCount: 0 };
-            await this.saveSettings();
-            this.updateUI();
-            this.showMessage('Statistics reset successfully!', 'success');
+            try {
+                // Reset statistics using the new statistics system
+                const response = await chrome.runtime.sendMessage({ type: 'RESET_STATISTICS' });
+                if (response.success) {
+                    await this.updateStatistics();
+                    this.showMessage('Statistics reset successfully!', 'success');
+                } else {
+                    this.showMessage('Failed to reset statistics', 'error');
+                }
+            } catch (error) {
+                console.error('Error resetting statistics:', error);
+                this.showMessage('Error resetting statistics', 'error');
+            }
         }
     }
 
@@ -251,32 +263,68 @@ class TunnlOptions {
         }
     }
 
-    updateUI() {
+    async updateUI() {
         // Populate form fields
         document.getElementById('api-key').value = this.settings.openaiApiKey;
         document.getElementById('tasks').value = this.settings.tasks.join('\n');
         // extension-enabled removed from UI
         this.renderAllowlist();
 
-        // Update statistics
-        document.getElementById('total-blocked').textContent = this.settings.stats.blockedCount;
-        document.getElementById('total-analyzed').textContent = this.settings.stats.analyzedCount;
-        
-        // Calculate today's blocked count
-        const today = new Date().toDateString();
-        const todayBlocked = this.settings.blockedSites.filter(site => 
-            new Date(site.timestamp).toDateString() === today
-        ).length;
-        document.getElementById('today-blocked').textContent = todayBlocked;
-
-        // Calculate focus score
-        const focusScore = this.settings.stats.analyzedCount > 0 
-            ? Math.round((this.settings.stats.blockedCount / this.settings.stats.analyzedCount) * 100)
-            : 0;
-        document.getElementById('focus-score').textContent = `${focusScore}%`;
+        // Update statistics from the new statistics system
+        await this.updateStatistics();
 
         // Render recently blocked
         this.renderBlockedHistory();
+    }
+
+    async updateStatistics() {
+        // Retry mechanism for statistics loading
+        let retries = 3;
+        let success = false;
+        
+        while (retries > 0 && !success) {
+            try {
+                console.log(`🔄 Requesting statistics from background script... (${4-retries}/3)`);
+                const response = await chrome.runtime.sendMessage({ type: 'GET_STATISTICS' });
+                console.log('📊 Statistics response:', response);
+                
+                if (response.success && response.statistics) {
+                    const stats = response.statistics;
+                    
+                    // Update the statistics display
+                    document.getElementById('total-analyzed').textContent = stats.urlsAnalyzed;
+                    document.getElementById('focus-score').textContent = stats.focusScore;
+                    document.getElementById('today-blocked').textContent = stats.urlsBlocked;
+                    
+                    // For total blocked, we'll use the blocked sites count from settings
+                    document.getElementById('total-blocked').textContent = this.settings.blockedSites.length;
+                    
+                    console.log('📊 Statistics updated in settings page:', stats);
+                    success = true;
+                } else {
+                    console.error('Failed to load statistics:', response.error);
+                    retries--;
+                    if (retries > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+                retries--;
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        }
+        
+        if (!success) {
+            console.log('📊 Using fallback statistics values');
+            // Fallback to default values
+            document.getElementById('total-analyzed').textContent = '0';
+            document.getElementById('focus-score').textContent = '0%';
+            document.getElementById('today-blocked').textContent = '0';
+            document.getElementById('total-blocked').textContent = this.settings.blockedSites.length;
+        }
     }
 
     // Allowlist UI
@@ -392,6 +440,8 @@ class TunnlOptions {
 }
 
 // Initialize options page when DOM is loaded
+console.log('🔧 Setting up DOMContentLoaded listener');
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('🔧 DOMContentLoaded fired, creating TunnlOptions instance');
     new TunnlOptions();
 });

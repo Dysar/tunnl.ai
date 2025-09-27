@@ -6,15 +6,17 @@ import { storageManager } from './storage/storage.js';
 import { STORAGE_AREAS, STORAGE_KEYS } from '../shared/storage-keys.js';
 import { TIMING_CONFIG } from '../shared/constants.js';
 import { isSystemUrl, isSameOrigin } from '../shared/utils.js';
+import { TunnlSettings, AnalysisResult } from '../shared/constants.js';
 
 class TunnlBackground {
+    private settings: TunnlSettings | null = null;
+    private lastSuggestionPopupMs: number = 0;
+
     constructor() {
-        this.settings = null;
-        this.lastSuggestionPopupMs = 0;
         this.init();
     }
 
-    async init() {
+    async init(): Promise<void> {
         console.log('tunnl.ai background script loaded');
         
         // Clear any existing quota issues first
@@ -30,12 +32,12 @@ class TunnlBackground {
         this.setupStorageListener();
         
         // Update badge
-        this.updateBadge(this.settings.extensionEnabled);
+        this.updateBadge(this.settings?.extensionEnabled || false);
         
-        console.log('tunnl.ai initialized, extension enabled:', this.settings.extensionEnabled);
+        console.log('tunnl.ai initialized, extension enabled:', this.settings?.extensionEnabled);
     }
 
-    async emergencyCleanup() {
+    private async emergencyCleanup(): Promise<void> {
         try {
             // Aggressively clean up any problematic data
             const syncData = await storageManager.getAll(STORAGE_AREAS.SYNC);
@@ -59,7 +61,7 @@ class TunnlBackground {
         }
     }
 
-    setupEventListeners() {
+    private setupEventListeners(): void {
         // Listen for messages from popup and content scripts
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return messageHandler.handleMessage(message, sender, sendResponse);
@@ -67,20 +69,22 @@ class TunnlBackground {
 
         // Toggle on toolbar icon click
         chrome.action.onClicked.addListener(async () => {
-            this.settings.extensionEnabled = !this.settings.extensionEnabled;
-            console.log('Extension toggled to:', this.settings.extensionEnabled ? 'ON' : 'OFF');
-            await messageHandler.saveSettings();
-            this.updateBadge(this.settings.extensionEnabled);
+            if (this.settings) {
+                this.settings.extensionEnabled = !this.settings.extensionEnabled;
+                console.log('Extension toggled to:', this.settings.extensionEnabled ? 'ON' : 'OFF');
+                await messageHandler.saveSettings();
+                this.updateBadge(this.settings.extensionEnabled);
 
-            // Optional: notify popup/options if open
-            chrome.runtime.sendMessage({
-                type: 'TOGGLE_EXTENSION',
-                enabled: this.settings.extensionEnabled
-            }).catch(() => { });
+                // Optional: notify popup/options if open
+                chrome.runtime.sendMessage({
+                    type: 'TOGGLE_EXTENSION',
+                    enabled: this.settings.extensionEnabled
+                }).catch(() => { });
+            }
         });
     }
 
-    setupNavigationListener() {
+    private setupNavigationListener(): void {
         // Use webNavigation API to track navigation - single event
         chrome.webNavigation.onCommitted.addListener((details) => {
             if (details.frameId === 0) { // Main frame only
@@ -89,55 +93,55 @@ class TunnlBackground {
         });
     }
 
-    setupStorageListener() {
+    private setupStorageListener(): void {
         chrome.storage.onChanged.addListener((changes, area) => {
-            if (area !== STORAGE_AREAS.LOCAL) return;
+            if (area !== STORAGE_AREAS.LOCAL || !this.settings) return;
 
             if (changes[STORAGE_KEYS.CURRENT_TASK]) {
-                this.settings.currentTask = changes[STORAGE_KEYS.CURRENT_TASK].newValue || null;
+                this.settings.currentTask = changes[STORAGE_KEYS.CURRENT_TASK]?.newValue || null;
                 console.log('Current task updated:', this.settings.currentTask);
             }
 
             if (changes[STORAGE_KEYS.OPENAI_API_KEY]) {
-                this.settings.openaiApiKey = changes[STORAGE_KEYS.OPENAI_API_KEY].newValue || '';
+                this.settings.openaiApiKey = changes[STORAGE_KEYS.OPENAI_API_KEY]?.newValue || '';
                 console.log('API key updated (masked):', this.settings.openaiApiKey ? '***' : '(empty)');
             }
 
             if (changes[STORAGE_KEYS.TASKS]) {
-                this.settings.tasks = Array.isArray(changes[STORAGE_KEYS.TASKS].newValue) ? changes[STORAGE_KEYS.TASKS].newValue : [];
+                this.settings.tasks = Array.isArray(changes[STORAGE_KEYS.TASKS]?.newValue) ? changes[STORAGE_KEYS.TASKS]?.newValue : [];
                 console.log('Tasks updated, count:', this.settings.tasks.length);
             }
 
             if (changes[STORAGE_KEYS.EXTENSION_ENABLED]) {
-                this.settings.extensionEnabled = changes[STORAGE_KEYS.EXTENSION_ENABLED].newValue !== false;
+                this.settings.extensionEnabled = changes[STORAGE_KEYS.EXTENSION_ENABLED]?.newValue !== false;
                 this.updateBadge(this.settings.extensionEnabled);
                 console.log('Extension enabled updated via storage:', this.settings.extensionEnabled);
             }
 
             if (changes[STORAGE_KEYS.STATS]) {
-                this.settings.stats = changes[STORAGE_KEYS.STATS].newValue || this.settings.stats;
+                this.settings.stats = changes[STORAGE_KEYS.STATS]?.newValue || this.settings.stats;
             }
 
             if (changes[STORAGE_KEYS.BLOCKED_SITES]) {
-                this.settings.blockedSites = changes[STORAGE_KEYS.BLOCKED_SITES].newValue || this.settings.blockedSites;
+                this.settings.blockedSites = changes[STORAGE_KEYS.BLOCKED_SITES]?.newValue || this.settings.blockedSites;
             }
 
             if (changes[STORAGE_KEYS.ALLOWLIST]) {
-                this.settings.allowlist = Array.isArray(changes[STORAGE_KEYS.ALLOWLIST].newValue) ? changes[STORAGE_KEYS.ALLOWLIST].newValue : [];
+                this.settings.allowlist = Array.isArray(changes[STORAGE_KEYS.ALLOWLIST]?.newValue) ? changes[STORAGE_KEYS.ALLOWLIST]?.newValue : [];
                 console.log('Allowlist updated, count:', this.settings.allowlist.length);
             }
         });
     }
 
-    async handleNavigation(details) {
+    private async handleNavigation(details: chrome.webNavigation.WebNavigationFramedCallbackDetails): Promise<void> {
         console.log('🚀 Navigation detected:', {
             url: details.url,
             tabId: details.tabId,
             frameId: details.frameId,
-            extensionEnabled: this.settings.extensionEnabled
+            extensionEnabled: this.settings?.extensionEnabled
         });
 
-        if (!this.settings.extensionEnabled) {
+        if (!this.settings?.extensionEnabled) {
             console.log('⏸️ Extension disabled, skipping analysis');
             return;
         }
@@ -192,7 +196,12 @@ class TunnlBackground {
         await this.analyzeAndBlockUrl(details.url, details.tabId);
     }
 
-    async analyzeAndBlockUrl(url, tabId) {
+    private async analyzeAndBlockUrl(url: string, tabId: number): Promise<void> {
+        if (!this.settings) {
+            console.log('⚠️ Settings not loaded, skipping analysis');
+            return;
+        }
+
         console.log('🔍 Starting URL analysis:', {
             url,
             tabId,
@@ -233,12 +242,17 @@ class TunnlBackground {
                 console.log('✅ URL allowed, no action needed');
             }
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error analyzing URL:', error);
         }
     }
 
-    async notifyBlockSuggestion(url, analysis, tabId) {
+    private async notifyBlockSuggestion(url: string, analysis: AnalysisResult, tabId: number): Promise<void> {
+        if (!this.settings) {
+            console.log('⚠️ Settings not loaded, cannot show block suggestion');
+            return;
+        }
+
         console.log('🚨 Preparing block notification:', {
             url,
             analysis,
@@ -307,7 +321,7 @@ class TunnlBackground {
                 } else {
                     console.log('⚠️ Invalid tabId, cannot send modal message');
                 }
-            } catch (msgErr) {
+            } catch (msgErr: any) {
                 console.log('❌ Failed to send modal message:', msgErr.message);
                 // Content script may not be ready or site CSP blocks injection; ignore
             }
@@ -327,19 +341,19 @@ class TunnlBackground {
                 
                 setTimeout(() => {
                     // Restore previous badge state
-                    chrome.action.setBadgeText({ text: previousBadge || (this.settings.extensionEnabled ? 'ON' : 'OFF') });
-                    chrome.action.setBadgeBackgroundColor({ color: previousColor || (this.settings.extensionEnabled ? '#6b46c1' : '#9ca3af') });
+                    chrome.action.setBadgeText({ text: previousBadge || (this.settings?.extensionEnabled ? 'ON' : 'OFF') });
+                    chrome.action.setBadgeBackgroundColor({ color: previousColor || (this.settings?.extensionEnabled ? '#6b46c1' : '#9ca3af') });
                     console.log('🔄 Badge restored to previous state');
                 }, TIMING_CONFIG.BADGE_NOTIFICATION_DURATION);
-            } catch (badgeErr) {
+            } catch (badgeErr: any) {
                 console.log('❌ Failed to set badge:', badgeErr.message);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error showing block suggestion toast:', error);
         }
     }
 
-    updateBadge(enabled) {
+    private updateBadge(enabled: boolean): void {
         const text = enabled ? 'ON' : 'OFF';
         const color = enabled ? '#6b46c1' : '#9ca3af';
         chrome.action.setBadgeText({ text });

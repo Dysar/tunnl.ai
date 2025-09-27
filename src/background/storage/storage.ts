@@ -1,21 +1,17 @@
 // Storage management for tunnl.ai Chrome Extension
 
-import { STORAGE_KEYS, STORAGE_AREAS, STORAGE_CONFIG } from '../../shared/storage-keys.js';
-import { cleanDataForStorage, STORAGE_LIMITS } from '../../shared/constants.js';
+import { STORAGE_KEYS, STORAGE_AREAS, STORAGE_CONFIG, type StorageKey, type StorageArea, type StorageInfo } from '../../shared/storage-keys.js';
+import { STORAGE_LIMITS, type TunnlSettings } from '../../shared/constants.js';
+import { cleanDataForStorage } from '../../shared/utils.js';
 
 class StorageManager {
-    constructor() {
-        this.cache = new Map();
-        this.cacheTimeout = 5000; // 5 seconds cache
-    }
+    private cache = new Map<string, { data: any; timestamp: number }>();
+    private cacheTimeout = 5000; // 5 seconds cache
 
     /**
      * Get data from storage with caching
-     * @param {string|Array} keys - Key(s) to retrieve
-     * @param {string} area - Storage area ('local' or 'sync')
-     * @returns {Promise<Object>} - Retrieved data
      */
-    async get(keys, area = STORAGE_AREAS.LOCAL) {
+    async get(keys: string | string[], area: StorageArea = STORAGE_AREAS.LOCAL): Promise<Record<string, any>> {
         const cacheKey = `${area}:${Array.isArray(keys) ? keys.join(',') : keys}`;
         const cached = this.cache.get(cacheKey);
         
@@ -42,14 +38,11 @@ class StorageManager {
 
     /**
      * Set data in storage
-     * @param {Object} data - Data to store
-     * @param {string} area - Storage area ('local' or 'sync')
-     * @returns {Promise<void>}
      */
-    async set(data, area = STORAGE_AREAS.LOCAL) {
+    async set(data: Record<string, any>, area: StorageArea = STORAGE_AREAS.LOCAL): Promise<void> {
         try {
             // Clean data before storing
-            const cleanedData = cleanDataForStorage(data, STORAGE_LIMITS);
+            const cleanedData = cleanDataForStorage(data as TunnlSettings, STORAGE_LIMITS);
             
             const storage = area === STORAGE_AREAS.LOCAL ? chrome.storage.local : chrome.storage.sync;
             await storage.set(cleanedData);
@@ -58,12 +51,12 @@ class StorageManager {
             this.clearCacheForKeys(Object.keys(cleanedData), area);
             
             console.log(`✅ Data stored in ${area} storage:`, Object.keys(cleanedData));
-        } catch (error) {
+        } catch (error: any) {
             if (error.message.includes('quota')) {
                 console.warn('Storage quota exceeded, cleaning up data...');
                 await this.cleanupStorage(area);
                 // Retry with cleaned data
-                const cleanedData = cleanDataForStorage(data, STORAGE_LIMITS);
+                const cleanedData = cleanDataForStorage(data as TunnlSettings, STORAGE_LIMITS);
                 const storage = area === STORAGE_AREAS.LOCAL ? chrome.storage.local : chrome.storage.sync;
                 await storage.set(cleanedData);
                 this.clearCacheForKeys(Object.keys(cleanedData), area);
@@ -75,11 +68,8 @@ class StorageManager {
 
     /**
      * Remove data from storage
-     * @param {string|Array} keys - Key(s) to remove
-     * @param {string} area - Storage area ('local' or 'sync')
-     * @returns {Promise<void>}
      */
-    async remove(keys, area = STORAGE_AREAS.LOCAL) {
+    async remove(keys: string | string[], area: StorageArea = STORAGE_AREAS.LOCAL): Promise<void> {
         try {
             const storage = area === STORAGE_AREAS.LOCAL ? chrome.storage.local : chrome.storage.sync;
             await storage.remove(keys);
@@ -97,10 +87,8 @@ class StorageManager {
 
     /**
      * Clear all data from storage
-     * @param {string} area - Storage area ('local' or 'sync')
-     * @returns {Promise<void>}
      */
-    async clear(area = STORAGE_AREAS.LOCAL) {
+    async clear(area: StorageArea = STORAGE_AREAS.LOCAL): Promise<void> {
         try {
             const storage = area === STORAGE_AREAS.LOCAL ? chrome.storage.local : chrome.storage.sync;
             await storage.clear();
@@ -117,10 +105,8 @@ class StorageManager {
 
     /**
      * Get all data from storage
-     * @param {string} area - Storage area ('local' or 'sync')
-     * @returns {Promise<Object>} - All stored data
      */
-    async getAll(area = STORAGE_AREAS.LOCAL) {
+    async getAll(area: StorageArea = STORAGE_AREAS.LOCAL): Promise<Record<string, any>> {
         try {
             const storage = area === STORAGE_AREAS.LOCAL ? chrome.storage.local : chrome.storage.sync;
             return await storage.get(null);
@@ -132,9 +118,8 @@ class StorageManager {
 
     /**
      * Migrate data from sync to local storage
-     * @returns {Promise<void>}
      */
-    async migrateFromSyncToLocal() {
+    async migrateFromSyncToLocal(): Promise<void> {
         try {
             const syncData = await this.getAll(STORAGE_AREAS.SYNC);
             const localData = await this.getAll(STORAGE_AREAS.LOCAL);
@@ -156,10 +141,8 @@ class StorageManager {
 
     /**
      * Clean up storage when quota is exceeded
-     * @param {string} area - Storage area to clean
-     * @returns {Promise<void>}
      */
-    async cleanupStorage(area = STORAGE_AREAS.LOCAL) {
+    async cleanupStorage(area: StorageArea = STORAGE_AREAS.LOCAL): Promise<void> {
         try {
             const data = await this.getAll(area);
             const dataSize = JSON.stringify(data).length;
@@ -193,16 +176,16 @@ class StorageManager {
 
     /**
      * Clear cache entries for specific keys
-     * @param {Array} keys - Keys to clear from cache
-     * @param {string} area - Storage area
      */
-    clearCacheForKeys(keys, area) {
+    private clearCacheForKeys(keys: string[], area: StorageArea): void {
         for (const [cacheKey] of this.cache) {
             if (cacheKey.startsWith(`${area}:`)) {
                 const keyPart = cacheKey.split(':')[1];
-                const cachedKeys = keyPart.split(',');
-                if (keys.some(key => cachedKeys.includes(key))) {
-                    this.cache.delete(cacheKey);
+                if (keyPart) {
+                    const cachedKeys = keyPart.split(',');
+                    if (keys.some(key => cachedKeys.includes(key))) {
+                        this.cache.delete(cacheKey);
+                    }
                 }
             }
         }
@@ -210,9 +193,8 @@ class StorageManager {
 
     /**
      * Clear all cache entries for a storage area
-     * @param {string} area - Storage area
      */
-    clearCacheForArea(area) {
+    private clearCacheForArea(area: StorageArea): void {
         for (const [cacheKey] of this.cache) {
             if (cacheKey.startsWith(`${area}:`)) {
                 this.cache.delete(cacheKey);
@@ -223,15 +205,14 @@ class StorageManager {
     /**
      * Clear all cache
      */
-    clearAllCache() {
+    clearAllCache(): void {
         this.cache.clear();
     }
 
     /**
      * Get storage usage information
-     * @returns {Promise<Object>} - Storage usage info
      */
-    async getStorageInfo() {
+    async getStorageInfo(): Promise<StorageInfo | null> {
         try {
             const localData = await this.getAll(STORAGE_AREAS.LOCAL);
             const syncData = await this.getAll(STORAGE_AREAS.SYNC);

@@ -3,22 +3,20 @@
 import { openaiClient } from '../api/openai.js';
 import { urlCache } from '../storage/cache.js';
 import { generateCacheKey, isSystemUrl } from '../../shared/utils.js';
-import { MESSAGE_TYPES } from '../../shared/message-types.js';
+import { AnalysisResult } from '../../shared/constants.js';
+
+// Import types from cache module
+type CacheStats = ReturnType<typeof urlCache.getStats>;
+type CacheEntryInfo = ReturnType<typeof urlCache.getEntries>;
 
 class URLAnalyzer {
-    constructor() {
-        this.recentUrls = [];
-        this.maxRecentUrls = 5;
-    }
+    private recentUrls: string[] = [];
+    private maxRecentUrls: number = 5;
 
     /**
      * Analyze URL and determine if it should be blocked
-     * @param {string} url - URL to analyze
-     * @param {string} currentTask - Current task text
-     * @param {string} apiKey - OpenAI API key
-     * @returns {Promise<Object>} - Analysis result
      */
-    async analyzeUrl(url, currentTask, apiKey) {
+    async analyzeUrl(url: string, currentTask: string | undefined, apiKey: string): Promise<AnalysisResult> {
         console.log('🔍 Starting URL analysis:', {
             url,
             currentTask: currentTask || 'No current task',
@@ -42,14 +40,13 @@ class URLAnalyzer {
         }
 
         // Check cache first
-        const cacheKey = generateCacheKey(url, currentTask, this.recentUrls);
+        const cacheKey = generateCacheKey(url, currentTask || '', this.recentUrls);
         const cachedResult = urlCache.get(cacheKey);
         
         if (cachedResult) {
             console.log('✅ Cache hit:', {
                 shouldBlock: cachedResult.shouldBlock,
-                reason: cachedResult.reason,
-                timestamp: new Date(cachedResult.timestamp).toISOString()
+                reason: cachedResult.reason
             });
             return cachedResult;
         }
@@ -72,7 +69,7 @@ class URLAnalyzer {
 
             return analysis;
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error analyzing URL:', error);
             return {
                 shouldBlock: false,
@@ -85,9 +82,8 @@ class URLAnalyzer {
 
     /**
      * Add URL to recent URLs list
-     * @param {string} url - URL to add
      */
-    addToRecentUrls(url) {
+    addToRecentUrls(url: string): void {
         // Skip system URLs
         if (isSystemUrl(url)) {
             return;
@@ -115,27 +111,23 @@ class URLAnalyzer {
 
     /**
      * Get recent URLs
-     * @returns {Array} - Array of recent URLs
      */
-    getRecentUrls() {
+    getRecentUrls(): string[] {
         return [...this.recentUrls];
     }
 
     /**
      * Clear recent URLs
      */
-    clearRecentUrls() {
+    clearRecentUrls(): void {
         this.recentUrls = [];
         console.log('🧹 Recent URLs cleared');
     }
 
     /**
      * Check if URL is allowlisted
-     * @param {string} url - URL to check
-     * @param {Array} allowlist - Array of allowlisted domains
-     * @returns {boolean} - True if allowlisted
      */
-    isAllowlisted(url, allowlist = []) {
+    isAllowlisted(url: string, allowlist: string[] = []): boolean {
         if (!url || !Array.isArray(allowlist)) return false;
         
         const coreSchemes = ['chrome://', 'chrome-extension://', 'devtools://'];
@@ -161,34 +153,33 @@ class URLAnalyzer {
 
     /**
      * Get cache statistics
-     * @returns {Object} - Cache statistics
      */
-    getCacheStats() {
+    getCacheStats(): CacheStats {
         return urlCache.getStats();
     }
 
     /**
      * Clear cache
      */
-    clearCache() {
+    clearCache(): void {
         urlCache.clear();
     }
 
     /**
      * Get cache entries for debugging
-     * @param {number} limit - Maximum number of entries
-     * @returns {Array} - Cache entries
      */
-    getCacheEntries(limit = 10) {
+    getCacheEntries(limit: number = 10): CacheEntryInfo {
         return urlCache.getEntries(limit);
     }
 
     /**
      * Search cache by URL pattern
-     * @param {string} pattern - URL pattern to search
-     * @returns {Array} - Matching cache entries
      */
-    searchCache(pattern) {
+    searchCache(pattern: string): Array<{
+        key: string;
+        timestamp: string;
+        data: AnalysisResult;
+    }> {
         return urlCache.search(pattern);
     }
 }

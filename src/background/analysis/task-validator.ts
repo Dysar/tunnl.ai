@@ -1,19 +1,27 @@
 // Task validation logic for tunnl.ai Chrome Extension
 
 import { openaiClient } from '../api/openai.js';
+import { TaskValidationResult } from '../../shared/constants.js';
+
+interface BasicValidationResult {
+    isValid: boolean;
+    reason: string;
+    suggestions: string[];
+    confidence: number;
+}
+
+interface TaskExamples {
+    good: string[];
+    bad: string[];
+}
 
 class TaskValidator {
-    constructor() {
-        this.validationEnabled = true;
-    }
+    private validationEnabled: boolean = true;
 
     /**
      * Validate a task description
-     * @param {string} taskText - Task text to validate
-     * @param {string} apiKey - OpenAI API key
-     * @returns {Promise<Object>} - Validation result
      */
-    async validateTask(taskText, apiKey) {
+    async validateTask(taskText: string, apiKey: string): Promise<TaskValidationResult> {
         console.log('Validating task:', taskText);
         
         if (!this.validationEnabled) {
@@ -22,7 +30,7 @@ class TaskValidator {
                 isValid: true, 
                 reason: 'Validation disabled', 
                 suggestions: [], 
-                sampleBlockedSites: [] 
+                confidence: 1.0
             };
         }
 
@@ -32,7 +40,7 @@ class TaskValidator {
                 isValid: false, 
                 reason: 'API key not configured', 
                 suggestions: [], 
-                sampleBlockedSites: [] 
+                confidence: 1.0
             };
         }
 
@@ -66,7 +74,7 @@ class TaskValidator {
                 confidence: result.confidence || 0.5
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Task validation API error:', error);
             return {
                 isValid: true, // Default to allowing task if validation fails
@@ -79,10 +87,8 @@ class TaskValidator {
 
     /**
      * Perform basic validation checks
-     * @param {string} taskText - Task text to validate
-     * @returns {Object} - Basic validation result
      */
-    performBasicValidation(taskText) {
+    private performBasicValidation(taskText: string): BasicValidationResult {
         const text = taskText.trim();
         
         // Check minimum length
@@ -156,11 +162,9 @@ class TaskValidator {
 
     /**
      * Get suggestions for improving a task
-     * @param {string} taskText - Task text to improve
-     * @returns {Array} - Array of improvement suggestions
      */
-    getTaskImprovementSuggestions(taskText) {
-        const suggestions = [];
+    getTaskImprovementSuggestions(taskText: string): string[] {
+        const suggestions: string[] = [];
         const text = taskText.trim().toLowerCase();
         
         // Check for common issues and provide suggestions
@@ -189,26 +193,23 @@ class TaskValidator {
 
     /**
      * Enable or disable task validation
-     * @param {boolean} enabled - Whether validation should be enabled
      */
-    setValidationEnabled(enabled) {
+    setValidationEnabled(enabled: boolean): void {
         this.validationEnabled = enabled;
         console.log(`Task validation ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     /**
      * Check if validation is enabled
-     * @returns {boolean} - True if validation is enabled
      */
-    isValidationEnabled() {
+    isValidationEnabled(): boolean {
         return this.validationEnabled;
     }
 
     /**
      * Get example good and bad tasks
-     * @returns {Object} - Examples of good and bad tasks
      */
-    getTaskExamples() {
+    getTaskExamples(): TaskExamples {
         return {
             good: [
                 'Research competitor pricing for SaaS tools',

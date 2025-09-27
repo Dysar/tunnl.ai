@@ -4,16 +4,17 @@ import { OPENAI_CONFIG } from '../../shared/constants.js';
 import { retryWithBackoff, isValidApiKeyFormat } from '../../shared/utils.js';
 
 class OpenAIClient {
+    private apiKey: string | null = null;
+    private baseURL: string = OPENAI_CONFIG.API_BASE_URL;
+
     constructor() {
-        this.apiKey = null;
-        this.baseURL = OPENAI_CONFIG.API_BASE_URL;
+        // Properties initialized above
     }
 
     /**
      * Set the API key
-     * @param {string} apiKey - OpenAI API key
      */
-    setApiKey(apiKey) {
+    setApiKey(apiKey: string): void {
         if (!isValidApiKeyFormat(apiKey)) {
             throw new Error('Invalid API key format. Must start with "sk-"');
         }
@@ -22,10 +23,8 @@ class OpenAIClient {
 
     /**
      * Validate API key by making a test request
-     * @param {string} apiKey - API key to validate
-     * @returns {Promise<Object>} - Validation result
      */
-    async validateApiKey(apiKey) {
+    async validateApiKey(apiKey: string): Promise<{ valid: boolean; error?: string; models?: number; message?: string }> {
         if (!isValidApiKeyFormat(apiKey)) {
             return { 
                 valid: false, 
@@ -66,7 +65,7 @@ class OpenAIClient {
                 message: `API key is valid. Found ${data.data?.length || 0} available models.`
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.log('❌ API key validation failed:', error.message);
             return { 
                 valid: false, 
@@ -77,12 +76,8 @@ class OpenAIClient {
 
     /**
      * Analyze URL for blocking decision
-     * @param {string} url - URL to analyze
-     * @param {string} currentTask - Current task text
-     * @param {Array} recentUrls - Recent URLs for context
-     * @returns {Promise<Object>} - Analysis result
      */
-    async analyzeUrl(url, currentTask, recentUrls = []) {
+    async analyzeUrl(url: string, currentTask: string | undefined, recentUrls: string[] = []): Promise<{ shouldBlock: boolean; reason: string; activityUnderstanding: string; confidence: number }> {
         if (!this.apiKey) {
             throw new Error('API key not set');
         }
@@ -134,7 +129,7 @@ class OpenAIClient {
 
             return this.parseAnalysisResponse(content);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('OpenAI API error:', error);
             return {
                 shouldBlock: false,
@@ -147,10 +142,8 @@ class OpenAIClient {
 
     /**
      * Validate task description
-     * @param {string} taskText - Task text to validate
-     * @returns {Promise<Object>} - Validation result
      */
-    async validateTask(taskText) {
+    async validateTask(taskText: string): Promise<{ isValid: boolean; reason: string; suggestions: string[]; confidence: number }> {
         if (!this.apiKey) {
             throw new Error('API key not set');
         }
@@ -193,7 +186,7 @@ class OpenAIClient {
 
             return this.parseTaskValidationResponse(content);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Task validation API error:', error);
             return {
                 isValid: true, // Default to allowing task if validation fails
@@ -206,18 +199,15 @@ class OpenAIClient {
 
     /**
      * Get system prompt for URL analysis
-     * @param {string} currentTask - Current task text
-     * @param {Array} recentUrls - Recent URLs for context
-     * @returns {string} - System prompt
      */
-    getAnalysisSystemPrompt(currentTask, recentUrls) {
+    private getAnalysisSystemPrompt(currentTask: string, recentUrls: string[]): string {
         return `You are a productivity assistant that helps users stay focused on their tasks. 
 Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
 
 Current activities/tasks: "${currentTask}"
 
 Recent browsing context (last 5 URLs visited):
-${recentUrls.length > 0 ? recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
+${recentUrls.length > 0 ? recentUrls.map((url: string, i: number) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
 
 Respond with a JSON object containing:
 - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
@@ -248,9 +238,8 @@ Guidelines:
 
     /**
      * Get system prompt for task validation
-     * @returns {string} - System prompt
      */
-    getTaskValidationSystemPrompt() {
+    private getTaskValidationSystemPrompt(): string {
         return `You are a productivity expert helping users write effective task descriptions for a website blocker.
 
 Your job is to evaluate if a task description is well-written for efficient website blocking. A good task description should:
@@ -280,10 +269,8 @@ Respond with a JSON object containing:
 
     /**
      * Parse analysis response from OpenAI
-     * @param {string} content - Raw response content
-     * @returns {Object} - Parsed analysis result
      */
-    parseAnalysisResponse(content) {
+    private parseAnalysisResponse(content: string): { shouldBlock: boolean; reason: string; activityUnderstanding: string; confidence: number } {
         try {
             const result = JSON.parse(content);
             console.log('✅ Successfully parsed AI response:', result);
@@ -325,10 +312,8 @@ Respond with a JSON object containing:
 
     /**
      * Parse task validation response from OpenAI
-     * @param {string} content - Raw response content
-     * @returns {Object} - Parsed validation result
      */
-    parseTaskValidationResponse(content) {
+    private parseTaskValidationResponse(content: string): { isValid: boolean; reason: string; suggestions: string[]; confidence: number } {
         try {
             const result = JSON.parse(content);
             console.log('Parsed validation result:', result);

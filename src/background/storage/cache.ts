@@ -1,21 +1,44 @@
 // URL cache management for tunnl.ai Chrome Extension
 
-import { CACHE_CONFIG } from '../../shared/constants.js';
+import { CACHE_CONFIG, type AnalysisResult } from '../../shared/constants.js';
+
+interface CacheEntry {
+    data: AnalysisResult;
+    timestamp: number;
+}
+
+interface CacheStats {
+    size: number;
+    maxSize: number;
+    expiredCount: number;
+    averageAge: number;
+    maxAge: number;
+}
+
+interface CacheEntryInfo {
+    key: string;
+    timestamp: string;
+    age: number;
+    data: {
+        shouldBlock: boolean;
+        reason: string;
+        confidence: number;
+    };
+}
 
 class URLCache {
+    private cache = new Map<string, CacheEntry>();
+    private maxSize = 1000; // Maximum number of cached entries
+    private cleanupInterval: NodeJS.Timeout | null = null;
+
     constructor() {
-        this.cache = new Map();
-        this.maxSize = 1000; // Maximum number of cached entries
-        this.cleanupInterval = null;
         this.startCleanupTimer();
     }
 
     /**
      * Get cached analysis result
-     * @param {string} cacheKey - Cache key
-     * @returns {Object|null} - Cached result or null
      */
-    get(cacheKey) {
+    get(cacheKey: string): AnalysisResult | null {
         const entry = this.cache.get(cacheKey);
         
         if (!entry) {
@@ -33,10 +56,8 @@ class URLCache {
 
     /**
      * Set cached analysis result
-     * @param {string} cacheKey - Cache key
-     * @param {Object} data - Analysis result data
      */
-    set(cacheKey, data) {
+    set(cacheKey: string, data: AnalysisResult): void {
         // Remove oldest entries if cache is full
         if (this.cache.size >= this.maxSize) {
             this.evictOldest();
@@ -52,10 +73,8 @@ class URLCache {
 
     /**
      * Check if cache has entry for key
-     * @param {string} cacheKey - Cache key
-     * @returns {boolean} - True if cache has entry
      */
-    has(cacheKey) {
+    has(cacheKey: string): boolean {
         const entry = this.cache.get(cacheKey);
         if (!entry) return false;
         
@@ -70,25 +89,23 @@ class URLCache {
 
     /**
      * Delete specific cache entry
-     * @param {string} cacheKey - Cache key to delete
      */
-    delete(cacheKey) {
+    delete(cacheKey: string): void {
         this.cache.delete(cacheKey);
     }
 
     /**
      * Clear all cache entries
      */
-    clear() {
+    clear(): void {
         this.cache.clear();
         console.log('🧹 URL cache cleared');
     }
 
     /**
      * Get cache statistics
-     * @returns {Object} - Cache statistics
      */
-    getStats() {
+    getStats(): CacheStats {
         const now = Date.now();
         let expiredCount = 0;
         let totalAge = 0;
@@ -113,9 +130,8 @@ class URLCache {
 
     /**
      * Clean up expired entries
-     * @returns {number} - Number of entries removed
      */
-    cleanup() {
+    cleanup(): number {
         const now = Date.now();
         let removedCount = 0;
 
@@ -135,9 +151,8 @@ class URLCache {
 
     /**
      * Evict oldest entries when cache is full
-     * @param {number} count - Number of entries to evict
      */
-    evictOldest(count = 10) {
+    private evictOldest(count: number = 10): void {
         const entries = Array.from(this.cache.entries())
             .sort((a, b) => a[1].timestamp - b[1].timestamp)
             .slice(0, count);
@@ -152,7 +167,7 @@ class URLCache {
     /**
      * Start automatic cleanup timer
      */
-    startCleanupTimer() {
+    private startCleanupTimer(): void {
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
         }
@@ -167,7 +182,7 @@ class URLCache {
     /**
      * Stop automatic cleanup timer
      */
-    stopCleanupTimer() {
+    stopCleanupTimer(): void {
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
@@ -177,10 +192,8 @@ class URLCache {
 
     /**
      * Get cache entries for debugging
-     * @param {number} limit - Maximum number of entries to return
-     * @returns {Array} - Array of cache entries
      */
-    getEntries(limit = 10) {
+    getEntries(limit: number = 10): CacheEntryInfo[] {
         const entries = Array.from(this.cache.entries())
             .sort((a, b) => b[1].timestamp - a[1].timestamp)
             .slice(0, limit)
@@ -200,11 +213,17 @@ class URLCache {
 
     /**
      * Search cache entries by URL pattern
-     * @param {string} pattern - URL pattern to search for
-     * @returns {Array} - Matching cache entries
      */
-    search(pattern) {
-        const results = [];
+    search(pattern: string): Array<{
+        key: string;
+        timestamp: string;
+        data: AnalysisResult;
+    }> {
+        const results: Array<{
+            key: string;
+            timestamp: string;
+            data: AnalysisResult;
+        }> = [];
         const regex = new RegExp(pattern, 'i');
 
         for (const [key, entry] of this.cache) {

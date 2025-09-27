@@ -7,20 +7,16 @@ import { taskValidator } from '../analysis/task-validator.js';
 import { openaiClient } from '../api/openai.js';
 import { STORAGE_AREAS, STORAGE_KEYS } from '../../shared/storage-keys.js';
 import { isSameOrigin } from '../../shared/utils.js';
+import { TunnlSettings, AnalysisResult, TaskValidationResult, ApiKeyValidationResult } from '../../shared/constants.js';
+import { TunnlMessage, MessageResponse } from '../../shared/message-types.js';
 
 class MessageHandler {
-    constructor() {
-        this.settings = null;
-    }
+    public settings: TunnlSettings | null = null;
 
     /**
      * Handle incoming messages
-     * @param {Object} message - Message object
-     * @param {Object} sender - Message sender
-     * @param {Function} sendResponse - Response callback
-     * @returns {boolean} - True to keep message channel open
      */
-    async handleMessage(message, sender, sendResponse) {
+    async handleMessage(message: TunnlMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: MessageResponse) => void): Promise<boolean> {
         try {
             console.log('📨 Received message:', message.type, message);
             
@@ -85,7 +81,7 @@ class MessageHandler {
                     console.warn('Unknown message type:', message.type);
                     sendResponse({ success: false, error: 'Unknown message type' });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error handling message:', error);
             sendResponse({ success: false, error: error.message });
         }
@@ -96,12 +92,12 @@ class MessageHandler {
     /**
      * Handle setting current task
      */
-    async handleSetCurrentTask(message, sendResponse) {
+    private async handleSetCurrentTask(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
             const { index, text } = message;
             let selected = null;
             
-            if (typeof index === 'number' && this.settings.tasks[index]) {
+            if (typeof index === 'number' && this.settings?.tasks[index]) {
                 selected = { 
                     text: this.settings.tasks[index], 
                     index, 
@@ -116,11 +112,14 @@ class MessageHandler {
                 throw new Error('Provide a valid task index or text');
             }
             
-            this.settings.currentTask = selected;
-            await storageManager.set({ [STORAGE_KEYS.CURRENT_TASK]: selected }, STORAGE_AREAS.LOCAL);
-            
-            sendResponse({ success: true, currentTask: this.settings.currentTask });
-        } catch (error) {
+            if (this.settings) {
+                this.settings.currentTask = selected;
+                await storageManager.set({ [STORAGE_KEYS.CURRENT_TASK]: selected }, STORAGE_AREAS.LOCAL);
+                sendResponse({ success: true, data: this.settings.currentTask });
+            } else {
+                throw new Error('Settings not loaded');
+            }
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -128,12 +127,16 @@ class MessageHandler {
     /**
      * Handle clearing current task
      */
-    async handleClearCurrentTask(message, sendResponse) {
+    private async handleClearCurrentTask(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
-            this.settings.currentTask = null;
-            await storageManager.set({ [STORAGE_KEYS.CURRENT_TASK]: null }, STORAGE_AREAS.LOCAL);
-            sendResponse({ success: true });
-        } catch (error) {
+            if (this.settings) {
+                this.settings.currentTask = null;
+                await storageManager.set({ [STORAGE_KEYS.CURRENT_TASK]: null }, STORAGE_AREAS.LOCAL);
+                sendResponse({ success: true });
+            } else {
+                throw new Error('Settings not loaded');
+            }
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -141,13 +144,17 @@ class MessageHandler {
     /**
      * Handle toggling extension
      */
-    async handleToggleExtension(message, sendResponse) {
+    private async handleToggleExtension(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
-            this.settings.extensionEnabled = message.enabled;
-            await storageManager.set({ [STORAGE_KEYS.EXTENSION_ENABLED]: message.enabled }, STORAGE_AREAS.LOCAL);
-            this.updateBadge(this.settings.extensionEnabled);
-            sendResponse({ success: true });
-        } catch (error) {
+            if (this.settings) {
+                this.settings.extensionEnabled = message.enabled;
+                await storageManager.set({ [STORAGE_KEYS.EXTENSION_ENABLED]: message.enabled }, STORAGE_AREAS.LOCAL);
+                this.updateBadge(this.settings.extensionEnabled);
+                sendResponse({ success: true });
+            } else {
+                throw new Error('Settings not loaded');
+            }
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -155,15 +162,19 @@ class MessageHandler {
     /**
      * Handle URL analysis
      */
-    async handleAnalyzeUrl(message, sendResponse) {
+    private async handleAnalyzeUrl(message: any, sendResponse: (response: MessageResponse<AnalysisResult>) => void): Promise<void> {
         try {
+            if (!this.settings) {
+                throw new Error('Settings not loaded');
+            }
+            
             const result = await urlAnalyzer.analyzeUrl(
                 message.url, 
                 this.settings.currentTask?.text, 
                 this.settings.openaiApiKey
             );
-            sendResponse({ success: true, result });
-        } catch (error) {
+            sendResponse({ success: true, data: result });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -171,14 +182,18 @@ class MessageHandler {
     /**
      * Handle task validation
      */
-    async handleValidateTask(message, sendResponse) {
+    private async handleValidateTask(message: any, sendResponse: (response: MessageResponse<TaskValidationResult>) => void): Promise<void> {
         try {
+            if (!this.settings) {
+                throw new Error('Settings not loaded');
+            }
+            
             const result = await taskValidator.validateTask(
                 message.taskText, 
                 this.settings.openaiApiKey
             );
-            sendResponse({ success: true, result });
-        } catch (error) {
+            sendResponse({ success: true, data: result });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -186,11 +201,11 @@ class MessageHandler {
     /**
      * Handle getting settings
      */
-    async handleGetSettings(message, sendResponse) {
+    private async handleGetSettings(message: any, sendResponse: (response: MessageResponse<TunnlSettings>) => void): Promise<void> {
         try {
             await this.loadSettings();
-            sendResponse({ success: true, settings: this.settings });
-        } catch (error) {
+            sendResponse({ success: true, data: this.settings! });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -198,12 +213,16 @@ class MessageHandler {
     /**
      * Handle updating settings
      */
-    async handleUpdateSettings(message, sendResponse) {
+    private async handleUpdateSettings(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
-            this.settings = { ...this.settings, ...message.settings };
-            await this.saveSettings();
-            sendResponse({ success: true });
-        } catch (error) {
+            if (this.settings) {
+                this.settings = { ...this.settings, ...message.settings };
+                await this.saveSettings();
+                sendResponse({ success: true });
+            } else {
+                throw new Error('Settings not loaded');
+            }
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -211,11 +230,11 @@ class MessageHandler {
     /**
      * Handle opening settings
      */
-    async handleOpenSettings(message, sendResponse) {
+    private async handleOpenSettings(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
             chrome.runtime.openOptionsPage();
             sendResponse({ success: true });
-        } catch (error) {
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -223,8 +242,12 @@ class MessageHandler {
     /**
      * Handle block feedback
      */
-    async handleBlockFeedback(message, sendResponse) {
+    private async handleBlockFeedback(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
+            if (!this.settings) {
+                throw new Error('Settings not loaded');
+            }
+            
             const { url, reason, correct } = message.data || {};
             if (!this.settings.feedback) this.settings.feedback = [];
             
@@ -242,7 +265,7 @@ class MessageHandler {
             
             await this.saveSettings();
             sendResponse({ success: true });
-        } catch (error) {
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -250,12 +273,12 @@ class MessageHandler {
     /**
      * Handle API key validation
      */
-    async handleValidateApiKey(message, sendResponse) {
+    private async handleValidateApiKey(message: any, sendResponse: (response: MessageResponse<ApiKeyValidationResult>) => void): Promise<void> {
         try {
             const { apiKey } = message;
             const validation = await openaiClient.validateApiKey(apiKey);
-            sendResponse({ success: true, validation });
-        } catch (error) {
+            sendResponse({ success: true, data: validation });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -263,8 +286,12 @@ class MessageHandler {
     /**
      * Handle adding to allowlist
      */
-    async handleAddToAllowlist(message, sendResponse) {
+    private async handleAddToAllowlist(message: any, sendResponse: (response: MessageResponse<string[]>) => void): Promise<void> {
         try {
+            if (!this.settings) {
+                throw new Error('Settings not loaded');
+            }
+            
             let { host, url } = message;
             if (!host && url) {
                 try { 
@@ -281,8 +308,8 @@ class MessageHandler {
                 await this.saveSettings();
             }
             
-            sendResponse({ success: true, allowlist: this.settings.allowlist });
-        } catch (error) {
+            sendResponse({ success: true, data: this.settings.allowlist });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -290,7 +317,7 @@ class MessageHandler {
     /**
      * Handle temporary unblock
      */
-    async handleTemporaryUnblock(message, sendResponse) {
+    private async handleTemporaryUnblock(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
             const { url, duration } = message;
             if (!url) throw new Error('url is required');
@@ -305,9 +332,9 @@ class MessageHandler {
             
             sendResponse({ 
                 success: true, 
-                message: `Site temporarily unblocked for ${duration || 10} minutes` 
+                data: `Site temporarily unblocked for ${duration || 10} minutes` 
             });
-        } catch (error) {
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -315,7 +342,7 @@ class MessageHandler {
     /**
      * Handle one-time bypass
      */
-    async handleOneTimeBypass(message, sendResponse) {
+    private async handleOneTimeBypass(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
             const { url } = message;
             if (!url) throw new Error('url is required');
@@ -326,8 +353,8 @@ class MessageHandler {
                 }
             }, STORAGE_AREAS.LOCAL);
             
-            sendResponse({ success: true, message: 'One-time bypass set' });
-        } catch (error) {
+            sendResponse({ success: true, data: 'One-time bypass set' });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -335,16 +362,20 @@ class MessageHandler {
     /**
      * Handle getting stats
      */
-    async handleGetStats(message, sendResponse) {
+    private async handleGetStats(message: any, sendResponse: (response: MessageResponse) => void): Promise<void> {
         try {
+            if (!this.settings) {
+                throw new Error('Settings not loaded');
+            }
+            
             const stats = {
                 blockedCount: this.settings.stats?.blockedCount || 0,
                 analyzedCount: this.settings.stats?.analyzedCount || 0,
                 focusScore: Math.min(100, Math.round((this.settings.stats?.blockedCount || 0) * 5)),
                 timeSaved: Math.round((this.settings.stats?.blockedCount || 0) * 2.5)
             };
-            sendResponse({ success: true, stats });
-        } catch (error) {
+            sendResponse({ success: true, data: stats });
+        } catch (error: any) {
             sendResponse({ success: false, error: error.message });
         }
     }
@@ -352,7 +383,7 @@ class MessageHandler {
     /**
      * Load settings from storage
      */
-    async loadSettings() {
+    async loadSettings(): Promise<void> {
         try {
             // Try local storage first (higher limits), fallback to sync
             let result = await storageManager.get([
@@ -396,10 +427,11 @@ class MessageHandler {
                 blockedSites: result[STORAGE_KEYS.BLOCKED_SITES] || [],
                 stats: result[STORAGE_KEYS.STATS] || { blockedCount: 0, analyzedCount: 0 },
                 allowlist: Array.isArray(result[STORAGE_KEYS.ALLOWLIST]) ? result[STORAGE_KEYS.ALLOWLIST] : [],
-                taskValidationEnabled: result[STORAGE_KEYS.TASK_VALIDATION_ENABLED] !== false
+                taskValidationEnabled: result[STORAGE_KEYS.TASK_VALIDATION_ENABLED] !== false,
+                feedback: result[STORAGE_KEYS.FEEDBACK] || []
             };
             
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error loading settings:', error);
             this.settings = {
                 openaiApiKey: '',
@@ -409,7 +441,8 @@ class MessageHandler {
                 blockedSites: [],
                 stats: { blockedCount: 0, analyzedCount: 0 },
                 allowlist: [],
-                taskValidationEnabled: true
+                taskValidationEnabled: true,
+                feedback: []
             };
         }
     }
@@ -417,10 +450,12 @@ class MessageHandler {
     /**
      * Save settings to storage
      */
-    async saveSettings() {
+    async saveSettings(): Promise<void> {
         try {
-            await storageManager.set(this.settings, STORAGE_AREAS.LOCAL);
-        } catch (error) {
+            if (this.settings) {
+                await storageManager.set(this.settings, STORAGE_AREAS.LOCAL);
+            }
+        } catch (error: any) {
             console.error('Error saving settings:', error);
             throw error;
         }
@@ -429,7 +464,7 @@ class MessageHandler {
     /**
      * Update extension badge
      */
-    updateBadge(enabled) {
+    updateBadge(enabled: boolean): void {
         const text = enabled ? 'ON' : 'OFF';
         const color = enabled ? '#6b46c1' : '#9ca3af';
         chrome.action.setBadgeText({ text });

@@ -4,7 +4,7 @@
   "description": "AI-powered website blocker Chrome extension",
   "main": "src/background/background.js",
   "scripts": {
-    "build": "node scripts/bundle.js",
+    "build": "npm run build:ts && node scripts/build.js",
     "build:ts": "tsc",
     "build:watch": "tsc --watch",
     "bundle": "node scripts/bundle.js",

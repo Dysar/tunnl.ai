@@ -21,16 +21,19 @@ async function build() {
         await fs.ensureDir(BUILD_DIR);
         console.log('✅ Cleaned build directory');
 
-        // Copy HTML and CSS files from src to dist
-        const htmlCssFiles = [
+        // Copy HTML, CSS, and JS files from src to dist
+        const htmlCssJsFiles = [
             'src/popup/popup.html',
-            'src/popup/popup.css', 
+            'src/popup/popup.css',
+            'src/popup/popup.js',
             'src/options/options.html',
+            'src/options/options.js',
             'src/blocked/blocked.html',
-            'src/blocked/blocked.css'
+            'src/blocked/blocked.css',
+            'src/blocked/blocked.js'
         ];
         
-        for (const file of htmlCssFiles) {
+        for (const file of htmlCssJsFiles) {
             if (await fs.pathExists(file)) {
                 const relativePath = path.relative('src', file);
                 const destPath = path.join(BUILD_DIR, relativePath);

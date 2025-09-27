@@ -1,7 +1,7 @@
 // Task validation logic for tunnl.ai Chrome Extension
 
-import { openaiClient } from '../api/openai.js';
-import { TaskValidationResult } from '../../shared/constants.js';
+import { openaiClient } from '../api/openai';
+import { TaskValidationResult } from '../../shared/constants';
 
 interface BasicValidationResult {
     isValid: boolean;

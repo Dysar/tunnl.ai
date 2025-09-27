@@ -1,6 +1,6 @@
 // Shared utility functions for tunnl.ai Chrome Extension
 
-import { SYSTEM_URLS, TIMING_CONFIG, type AnalysisResult, type TunnlSettings } from './constants.js';
+import { SYSTEM_URLS, TIMING_CONFIG, type AnalysisResult, type TunnlSettings } from './constants';
 
 /**
  * Check if a URL is a system URL that should be skipped

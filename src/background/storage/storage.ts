@@ -1,8 +1,8 @@
 // Storage management for tunnl.ai Chrome Extension
 
-import { STORAGE_KEYS, STORAGE_AREAS, STORAGE_CONFIG, type StorageKey, type StorageArea, type StorageInfo } from '../../shared/storage-keys.js';
-import { STORAGE_LIMITS, type TunnlSettings } from '../../shared/constants.js';
-import { cleanDataForStorage } from '../../shared/utils.js';
+import { STORAGE_KEYS, STORAGE_AREAS, STORAGE_CONFIG, type StorageKey, type StorageArea, type StorageInfo } from '../../shared/storage-keys';
+import { STORAGE_LIMITS, type TunnlSettings } from '../../shared/constants';
+import { cleanDataForStorage } from '../../shared/utils';
 
 class StorageManager {
     private cache = new Map<string, { data: any; timestamp: number }>();

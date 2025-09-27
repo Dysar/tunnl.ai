@@ -1,6 +1,6 @@
 // URL cache management for tunnl.ai Chrome Extension
 
-import { CACHE_CONFIG, type AnalysisResult } from '../../shared/constants.js';
+import { CACHE_CONFIG, type AnalysisResult } from '../../shared/constants';
 
 interface CacheEntry {
     data: AnalysisResult;

@@ -3,6 +3,12 @@
   "name": "tunnl.ai - AI Website Blocker",
   "version": "1.0.0",
   "description": "AI-powered website blocker that helps you stay focused on your tasks by analyzing and blocking distracting websites.",
+  "icons": {
+    "16": "assets/images/beaver.png",
+    "32": "assets/images/beaver.png",
+    "48": "assets/images/beaver.png",
+    "128": "assets/images/beaver.png"
+  },
   "permissions": [
     "activeTab",
     "storage",
@@ -14,12 +20,12 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "dist/background/background.js"
+    "service_worker": "background/background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dist/content/content.js"],
+      "js": ["content/content.js"],
       "run_at": "document_start"
     }
   ],
@@ -32,7 +38,7 @@
     {
       "resources": [
         "blocked/blocked.html",
-        "dist/blocked/blocked.js",
+        "blocked/blocked.js",
         "assets/images/access_denied.png",
         "assets/images/beaver.png",
         "assets/images/blocked_beaver.png",

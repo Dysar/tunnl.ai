@@ -1,7 +1,7 @@
 // OpenAI API client for tunnl.ai Chrome Extension
 
-import { OPENAI_CONFIG } from '../../shared/constants.js';
-import { retryWithBackoff, isValidApiKeyFormat } from '../../shared/utils.js';
+import { OPENAI_CONFIG } from '../../shared/constants';
+import { retryWithBackoff, isValidApiKeyFormat } from '../../shared/utils';
 
 class OpenAIClient {
     private apiKey: string | null = null;

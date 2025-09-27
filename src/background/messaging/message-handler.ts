@@ -1,14 +1,14 @@
 // Message handling for tunnl.ai Chrome Extension
 
-import { MESSAGE_TYPES } from '../../shared/message-types.js';
-import { storageManager } from '../storage/storage.js';
-import { urlAnalyzer } from '../analysis/analyzer.js';
-import { taskValidator } from '../analysis/task-validator.js';
-import { openaiClient } from '../api/openai.js';
-import { STORAGE_AREAS, STORAGE_KEYS } from '../../shared/storage-keys.js';
-import { isSameOrigin } from '../../shared/utils.js';
-import { TunnlSettings, AnalysisResult, TaskValidationResult, ApiKeyValidationResult } from '../../shared/constants.js';
-import { TunnlMessage, MessageResponse } from '../../shared/message-types.js';
+import { MESSAGE_TYPES } from '../../shared/message-types';
+import { storageManager } from '../storage/storage';
+import { urlAnalyzer } from '../analysis/analyzer';
+import { taskValidator } from '../analysis/task-validator';
+import { openaiClient } from '../api/openai';
+import { STORAGE_AREAS, STORAGE_KEYS } from '../../shared/storage-keys';
+import { isSameOrigin } from '../../shared/utils';
+import { TunnlSettings, AnalysisResult, TaskValidationResult, ApiKeyValidationResult } from '../../shared/constants';
+import { TunnlMessage, MessageResponse } from '../../shared/message-types';
 
 class MessageHandler {
     public settings: TunnlSettings | null = null;

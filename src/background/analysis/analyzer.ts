@@ -1,9 +1,9 @@
 // URL analysis logic for tunnl.ai Chrome Extension
 
-import { openaiClient } from '../api/openai.js';
-import { urlCache } from '../storage/cache.js';
-import { generateCacheKey, isSystemUrl } from '../../shared/utils.js';
-import { AnalysisResult } from '../../shared/constants.js';
+import { openaiClient } from '../api/openai';
+import { urlCache } from '../storage/cache';
+import { generateCacheKey, isSystemUrl } from '../../shared/utils';
+import { AnalysisResult } from '../../shared/constants';
 
 // Import types from cache module
 type CacheStats = ReturnType<typeof urlCache.getStats>;

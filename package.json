@@ -4,9 +4,10 @@
   "description": "AI-powered website blocker Chrome extension",
   "main": "src/background/background.js",
   "scripts": {
-    "build": "npm run build:ts && node scripts/build.js",
+    "build": "node scripts/bundle.js",
     "build:ts": "tsc",
     "build:watch": "tsc --watch",
+    "bundle": "node scripts/bundle.js",
     "test": "node scripts/test.js",
     "lint": "eslint src --ext .ts,.js",
     "lint:fix": "eslint src --ext .ts,.js --fix",
@@ -26,15 +27,16 @@
   "author": "tunnl.ai",
   "license": "MIT",
   "devDependencies": {
-    "typescript": "^5.0.0",
     "@types/chrome": "^0.0.250",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "eslint": "^8.0.0",
-    "prettier": "^3.0.0",
     "archiver": "^6.0.0",
-    "fs-extra": "^11.0.0"
+    "esbuild": "^0.25.10",
+    "eslint": "^8.0.0",
+    "fs-extra": "^11.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
   },
   "engines": {
     "node": ">=16.0.0"

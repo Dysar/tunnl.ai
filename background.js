@@ -1,5 +1,8 @@
 // Background script for tunnl.ai Chrome Extension
 
+// Import TaskValidator
+importScripts('task-validator.js');
+
 class TunnlBackground {
     constructor() {
         this.settings = {
@@ -14,6 +17,7 @@ class TunnlBackground {
         this.urlCache = new Map(); // Cache for analyzed URLs
         this.lastSuggestionPopupMs = 0; // Debounce popup suggestions
         this.recentUrls = []; // Track last 5 URLs for context
+        this.taskValidator = null; // Will be initialized after settings are loaded
         this.init();
     }
 
@@ -24,6 +28,7 @@ class TunnlBackground {
         await this.emergencyCleanup();
         
         await this.loadSettings();
+        this.taskValidator = new TaskValidator(this.settings, this.retryRequest.bind(this));
         this.setupEventListeners();
         this.setupNavigationListener();
         this.setupStorageListener();
@@ -108,12 +113,21 @@ class TunnlBackground {
         };
     }
 
+    updateTaskValidator() {
+        // Update TaskValidator with current settings
+        if (this.taskValidator) {
+            this.taskValidator.settings = this.settings;
+        }
+    }
+
     async saveSettings() {
         try {
             // Clean up large data before saving
             const cleanedSettings = this.cleanSettingsForStorage();
             // Use local storage (much higher limits than sync)
             await chrome.storage.local.set(cleanedSettings);
+            // Update TaskValidator with new settings
+            this.updateTaskValidator();
         } catch (error) {
             if (error.message.includes('quota')) {
                 console.warn('Storage quota exceeded, cleaning up data...');
@@ -121,6 +135,8 @@ class TunnlBackground {
                 // Retry with cleaned data
                 const cleanedSettings = this.cleanSettingsForStorage();
                 await chrome.storage.local.set(cleanedSettings);
+                // Update TaskValidator with new settings
+                this.updateTaskValidator();
             } else {
                 throw error;
             }
@@ -577,106 +593,8 @@ class TunnlBackground {
     }
 
     async validateTask(taskText) {
-        console.log('Validating task:', taskText);
-        if (!this.settings.taskValidationEnabled) {
-            console.log('Task validation disabled');
-            return { isValid: true, reason: 'Validation disabled', suggestions: [], sampleBlockedSites: [] };
-        }
-
-        if (!this.settings.openaiApiKey) {
-            console.log('Extension not configured - API key missing');
-            return { isValid: false, reason: 'API key not configured', suggestions: [], sampleBlockedSites: [] };
-        }
-
-        try {
-            const response = await this.retryRequest(async () => {
-                const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${this.settings.openaiApiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: 'gpt-3.5-turbo',
-                        messages: [
-                            {
-                                role: 'system',
-                                content: `You are a productivity expert helping users write effective task descriptions for a website blocker.
-
-Your job is to evaluate if a task description is well-written for efficient website blocking. A good task description should:
-1. Be specific and actionable (not too broad or vague)
-2. Clearly indicate what websites would be relevant
-3. Be focused enough that the AI can distinguish relevant vs irrelevant sites
-4. Not be so broad that it would allow distracting websites
-
-Examples of GOOD task descriptions:
-- "Research competitor pricing for SaaS tools"
-- "Write blog post about React hooks"
-- "Prepare presentation slides for Q4 sales meeting"
-- "Debug authentication issues in the login module"
-
-Examples of BAD task descriptions (too broad):
-- "Work on project"
-- "Be productive"
-- "Do research"
-- "Learn something new"
-
-Respond with a JSON object containing:
-- "isValid": boolean (true if the task is well-described for blocking)
-- "reason": string (explanation of why it's valid/invalid)
-                                - "suggestions": array of strings (specific suggestions to improve the task if invalid)
-                                - "confidence": number (0-1, how confident you are in this assessment)`
-                            },
-                            {
-                                role: 'user',
-                                content: `Evaluate this task description: "${taskText}"`
-                            }
-                        ],
-                        temperature: 0.3,
-                        max_tokens: 300
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`OpenAI API error: ${response.status}`);
-                }
-
-                return response;
-            }, 3, 1000);
-
-            const data = await response.json();
-            const content = data.choices[0].message.content;
-            console.log('Task validation response:', content);
-
-            try {
-                const result = JSON.parse(content);
-                console.log('Parsed validation result:', result);
-                return {
-                    isValid: result.isValid || false,
-                    reason: result.reason || 'No reason provided',
-                    suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
-                    confidence: result.confidence || 0.5
-                };
-            } catch (parseError) {
-                console.log('JSON parse error, using fallback:', parseError);
-                // Fallback if JSON parsing fails
-                return {
-                    isValid: !content.toLowerCase().includes('invalid') && !content.toLowerCase().includes('too broad'),
-                    reason: 'AI analysis completed',
-                    suggestions: [],
-                    confidence: 0.5
-                };
-            }
-
-        } catch (error) {
-            console.error('Task validation API error:', error);
-            return {
-                isValid: true, // Default to allowing task if validation fails
-                reason: `Validation error: ${error.message}`,
-                suggestions: [],
-                confidence: 0
-            };
-        }
+        // Delegate to TaskValidator
+        return await this.taskValidator.validateTask(taskText);
     }
 
     async analyzeUrl(url) {

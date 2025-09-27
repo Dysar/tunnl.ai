@@ -127,9 +127,9 @@
                 <div id="add-task-validation-message" class="validation-message-inline hidden">
                     <!-- Validation messages will appear here -->
                 </div>
-                <textarea id="new-task-text" placeholder="Type your task..." maxlength="100"></textarea>
+                <textarea id="new-task-text" placeholder="Type your task..." maxlength="500"></textarea>
                 <div class="char-counter">
-                    <span id="char-count">0</span>/100
+                    <span id="char-count">0</span>/500
                 </div>
             </div>
             <div class="timer-section">
@@ -145,6 +145,24 @@
             </div>
             <div class="task-actions">
                 <button id="save-new-task" class="btn-primary">Save Task</button>
+            </div>
+            
+            <!-- Task Confirmation Section (hidden by default) -->
+            <div id="task-confirmation" class="task-confirmation hidden">
+                <div class="confirmation-content">
+                    <h3>Confirm Your Task</h3>
+                    <div class="task-understanding">
+                        <div class="understanding-item">
+                            <strong>Topic:</strong> <span id="confirmation-topic"></span>
+                        </div>
+                        <div class="understanding-item">
+                            <strong>Action:</strong> <span id="confirmation-action"></span>
+                        </div>
+                    </div>
+                    <div class="confirmation-actions">
+                        <button id="confirm-task" class="btn-primary">Confirm & Save</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

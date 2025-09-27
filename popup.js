@@ -5,6 +5,7 @@ class TunnlPopup {
         this.currentView = 'main'; // 'main' or 'detail'
         this.selectedTaskId = null;
         this.lockEndTime = null;
+        this.pendingTaskText = null; // For task confirmation
         this.init();
     }
 
@@ -132,6 +133,12 @@ class TunnlPopup {
             newTaskText.addEventListener('input', () => this.updateCharCounter());
         }
 
+        // Task confirmation button
+        const confirmTaskBtn = document.getElementById('confirm-task');
+        if (confirmTaskBtn) {
+            confirmTaskBtn.addEventListener('click', () => this.confirmTask());
+        }
+
         // Timer buttons in add task view
         const addTimerBtns = document.querySelectorAll('#add-task-view .timer-btn');
         addTimerBtns.forEach(btn => {
@@ -204,8 +211,17 @@ class TunnlPopup {
                 const validation = response.validation;
                 
                 if (validation.valid) {
+                    // Check if this is a new user (no existing tasks)
+                    const isNewUser = this.settings.tasks.length === 0;
+                    
                     // Save the API key
                     this.settings.openaiApiKey = apiKey;
+                    
+                    // Add a sample task for new users
+                    if (isNewUser) {
+                        this.settings.tasks.push("Research competitor pricing for SaaS tools");
+                    }
+                    
                     await this.saveSettings();
                     
                     this.showMessage(`✅ ${validation.message}`, 'success');
@@ -301,6 +317,57 @@ class TunnlPopup {
         }
     }
 
+    showTaskConfirmation(taskText, validation) {
+        // Hide validation message
+        this.clearAddTaskValidationMessage();
+        
+        // Show confirmation section
+        const confirmationEl = document.getElementById('task-confirmation');
+        if (confirmationEl) {
+            confirmationEl.classList.remove('hidden');
+        }
+        
+        // Populate topic and action
+        const topicEl = document.getElementById('confirmation-topic');
+        const actionEl = document.getElementById('confirmation-action');
+        if (topicEl) topicEl.textContent = validation.topic || 'Unknown topic';
+        if (actionEl) actionEl.textContent = validation.action || 'Unknown action';
+        
+        // Store current task text for confirmation
+        this.pendingTaskText = taskText;
+    }
+
+    hideTaskConfirmation() {
+        const confirmationEl = document.getElementById('task-confirmation');
+        if (confirmationEl) {
+            confirmationEl.classList.add('hidden');
+        }
+        
+        this.pendingTaskText = null;
+    }
+
+    async confirmTask() {
+        if (!this.pendingTaskText) return;
+        
+        // Add the task
+        this.settings.tasks.push(this.pendingTaskText);
+        await this.saveSettings();
+
+        // Clear input and hide confirmation
+        const taskInput = document.getElementById('new-task-text');
+        if (taskInput) taskInput.value = '';
+        
+        this.hideTaskConfirmation();
+        this.showAddTaskValidationMessage('✅ Task added successfully!', 'success');
+        
+        // Auto-return to main view after a short delay
+        setTimeout(() => {
+            this.showMainView();
+            this.updateUI();
+        }, 1500);
+    }
+
+
     async addTaskFromEditor() {
         const taskInput = document.getElementById('new-task-text');
         const taskText = (taskInput ? taskInput.value : '').trim();
@@ -321,42 +388,28 @@ class TunnlPopup {
         const addButton = document.getElementById('save-new-task');
         const originalText = addButton ? addButton.textContent : '';
         if (addButton) {
-            addButton.textContent = 'Validating...';
+            addButton.textContent = 'Analyzing...';
             addButton.disabled = true;
         }
 
         try {
-            // Validate task if validation is enabled
-            if (this.settings.taskValidationEnabled) {
-                const response = await this.sendMessageWithRetry({
-                    type: 'VALIDATE_TASK',
-                    taskText: taskText
-                }, 5, 200);
+            // Get task understanding from LLM
+            const response = await this.sendMessageWithRetry({
+                type: 'VALIDATE_TASK',
+                taskText: taskText
+            }, 5, 200);
 
-                if (response.success) {
-                    const validation = response.result;
-                    if (!validation.isValid) {
-                        let errorMessage = `Task needs improvement: ${validation.reason}`;
-                        if (validation.suggestions && validation.suggestions.length > 0) {
-                            errorMessage += '\n\nSuggestions:\n• ' + validation.suggestions.join('\n• ');
-                        }
-                        this.showAddTaskValidationMessage(errorMessage, 'error');
-                        return;
-                    } else {
-                        this.showAddTaskValidationMessage(`✅ Task validated: ${validation.reason}`, 'success');
-                    }
-                } else {
-                    console.error('Task validation failed:', response.error);
-                    this.showAddTaskValidationMessage('Task validation failed, but adding anyway', 'warning');
-                }
+            if (response.success) {
+                const understanding = response.result;
+                // Always show confirmation step with task understanding
+                this.showTaskConfirmation(taskText, understanding);
+                return;
+            } else {
+                console.error('Task understanding failed:', response.error);
+                // Fallback to basic understanding
+                this.showTaskConfirmation(taskText, { topic: 'General task', action: 'Work on task' });
+                return;
             }
-
-            // Add the task
-            this.settings.tasks.push(taskText);
-            await this.saveSettings();
-
-            if (taskInput) taskInput.value = '';
-            this.showAddTaskValidationMessage('✅ Task added successfully!', 'success');
             
             // Auto-return to main view after a short delay
             setTimeout(() => {
@@ -538,8 +591,27 @@ class TunnlPopup {
             taskTextElement.className = 'task-text';
             taskTextElement.textContent = taskText;
 
-            // Add click handler for the entire task item
-            taskItem.addEventListener('click', () => {
+            // Create delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'task-delete-btn';
+            deleteButton.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M10 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            `;
+            deleteButton.title = 'Delete task';
+            
+            // Add click handler for delete button (stop propagation to prevent task selection)
+            deleteButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent task selection when clicking delete
+                this.deleteTaskFromList(taskText);
+            });
+
+            // Add click handler for the task text (not the delete button)
+            taskTextElement.addEventListener('click', () => {
                 if (currentTaskText === taskText) {
                     // If clicking on current task, show detail view
                     this.showTaskDetail(task.id || taskText);
@@ -551,6 +623,7 @@ class TunnlPopup {
 
             taskItem.appendChild(radio);
             taskItem.appendChild(taskTextElement);
+            taskItem.appendChild(deleteButton);
             taskList.appendChild(taskItem);
         });
 
@@ -568,8 +641,28 @@ class TunnlPopup {
             taskText.className = 'task-text';
             taskText.textContent = task.text || task;
 
+            // Create delete button for completed tasks too
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'task-delete-btn';
+            deleteButton.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M10 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            `;
+            deleteButton.title = 'Delete task';
+            
+            // Add click handler for delete button
+            deleteButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteTaskFromList(task.text || task);
+            });
+
             taskItem.appendChild(radio);
             taskItem.appendChild(taskText);
+            taskItem.appendChild(deleteButton);
             if (completedTasks) completedTasks.appendChild(taskItem);
         });
 
@@ -705,9 +798,29 @@ class TunnlPopup {
         this.currentView = 'main';
         this.selectedTaskId = null;
         
-        // Hide task detail view
+        // Hide all views
         document.getElementById('task-detail').classList.add('hidden');
+        document.getElementById('add-task-view').classList.add('hidden');
         document.getElementById('main-interface').classList.remove('hidden');
+        
+        // Clear any confirmation state
+        this.hideTaskConfirmation();
+        this.clearAddTaskValidationMessage();
+        
+        // Reset the add task form
+        const taskInput = document.getElementById('new-task-text');
+        if (taskInput) {
+            taskInput.value = '';
+        }
+        this.updateCharCounter();
+        
+        // Reset save button
+        const saveButton = document.getElementById('save-new-task');
+        if (saveButton) {
+            saveButton.textContent = 'Save Task';
+            saveButton.disabled = false;
+            saveButton.style.display = 'block';
+        }
     }
 
     selectTimer(button) {
@@ -802,6 +915,36 @@ class TunnlPopup {
                     this.showMainView();
                     this.updateTaskList();
                 }
+            } catch (error) {
+                console.error('Error deleting task:', error);
+            }
+        }
+    }
+
+    async deleteTaskFromList(taskText) {
+        if (confirm('Are you sure you want to delete this task?')) {
+            try {
+                // Remove task from local settings
+                this.settings.tasks = this.settings.tasks.filter(task => {
+                    const taskTextToCompare = task.text || task;
+                    return taskTextToCompare !== taskText;
+                });
+
+                // If this was the current task, clear it
+                if (this.settings.currentTask?.text === taskText) {
+                    this.settings.currentTask = null;
+                    // Also clear it in the background script
+                    await this.sendMessageWithRetry({
+                        type: 'CLEAR_CURRENT_TASK'
+                    });
+                }
+
+                // Save settings
+                await this.saveSettings();
+
+                // Update the UI
+                this.updateTaskList();
+                this.updateUI();
             } catch (error) {
                 console.error('Error deleting task:', error);
             }

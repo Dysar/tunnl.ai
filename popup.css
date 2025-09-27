@@ -442,6 +442,18 @@ body {
     margin-right: 8px;
 }
 
+.understanding-item.effectiveness {
+    background: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 3px solid #007bff;
+    margin-top: 8px;
+}
+
+.understanding-item.effectiveness strong {
+    color: #007bff;
+}
+
 .confirmation-actions {
     display: flex;
     gap: 8px;

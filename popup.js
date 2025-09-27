@@ -327,11 +327,13 @@ class TunnlPopup {
             confirmationEl.classList.remove('hidden');
         }
         
-        // Populate topic and action
+        // Populate topic, action, and effectiveness
         const topicEl = document.getElementById('confirmation-topic');
         const actionEl = document.getElementById('confirmation-action');
+        const effectivenessEl = document.getElementById('confirmation-effectiveness');
         if (topicEl) topicEl.textContent = validation.topic || 'Unknown topic';
         if (actionEl) actionEl.textContent = validation.action || 'Unknown action';
+        if (effectivenessEl) effectivenessEl.textContent = validation.effectiveness || 'Effectiveness not assessed';
         
         // Store current task text for confirmation
         this.pendingTaskText = taskText;
@@ -407,7 +409,11 @@ class TunnlPopup {
             } else {
                 console.error('Task understanding failed:', response.error);
                 // Fallback to basic understanding
-                this.showTaskConfirmation(taskText, { topic: 'General task', action: 'Work on task' });
+                this.showTaskConfirmation(taskText, { 
+                    topic: 'General task', 
+                    action: 'Work on task',
+                    effectiveness: 'Moderately effective - analysis failed'
+                });
                 return;
             }
             

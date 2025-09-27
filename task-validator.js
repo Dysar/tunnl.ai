@@ -16,15 +16,16 @@ You are a helpful assistant that understands task descriptions. Your job is to a
 For any task description, respond with a JSON object containing:
 	•	topic: string (the main subject/domain the user is working on, e.g., "SaaS tools", "React development", "hosting providers", "marketing")
 	•	action: string (what the user is trying to accomplish, e.g., "research pricing", "write blog post", "compare options", "plan campaign")
+	•	effectiveness: string (brief opinion on how effective this task is for detecting distractions, e.g., "Very effective - clear focus on specific domain, good for distraction blocking", "Moderately effective - could be more specific for better distraction blocking", "Less effective - too broad for distraction bblocking")
 
 Examples:
-- "Research competitor pricing for SaaS tools" → topic: "SaaS tools", action: "research pricing"
-- "Compare hosting providers" → topic: "hosting providers", action: "compare options"
-- "Write blog post about React hooks" → topic: "React development", action: "write blog post"
-- "Work on project" → topic: "general project work", action: "work on project"
-- "Be productive" → topic: "general productivity", action: "be productive"
+- "Research competitor pricing for SaaS tools" → topic: "SaaS tools", action: "research pricing", effectiveness: "Very ..."
+- "Compare hosting providers" → topic: "hosting providers", action: "compare options", effectiveness: "Very ..."
+- "Write blog post about React hooks" → topic: "React development", action: "write blog post", effectiveness: "Very ..."
+- "Work on project" → topic: "general project work", action: "work on project", effectiveness: "Less ..."
+- "Be productive" → topic: "general productivity", action: "be productive", effectiveness: "Less ..."
 
-Always provide a topic and action, even for vague tasks. Be helpful and interpret the user's intent.
+Always provide all three fields: topic, action, and effectiveness. Be helpful and interpret the user's intent.
 `;
     }
 
@@ -37,13 +38,15 @@ Always provide a topic and action, even for vague tasks. Be helpful and interpre
             console.log('Parsed task understanding:', result);
             return {
                 topic: result.topic || 'Unknown topic',
-                action: result.action || 'Unknown action'
+                action: result.action || 'Unknown action',
+                effectiveness: result.effectiveness || 'Moderately effective - assessment unavailable'
             };
         } catch (parseError) {
             console.log('JSON parse error, using fallback:', parseError);
             return {
                 topic: 'Unknown topic',
-                action: 'Unknown action'
+                action: 'Unknown action',
+                effectiveness: 'Moderately effective - assessment unavailable'
             };
         }
     }
@@ -56,7 +59,11 @@ Always provide a topic and action, even for vague tasks. Be helpful and interpre
         
         if (!this.settings.openaiApiKey) {
             console.log('Extension not configured - API key missing');
-            return { topic: 'General task', action: 'Work on task' };
+            return { 
+                topic: 'General task', 
+                action: 'Work on task',
+                effectiveness: 'Moderately effective - API not configured'
+            };
         }
 
         try {
@@ -101,7 +108,8 @@ Always provide a topic and action, even for vague tasks. Be helpful and interpre
             console.error('Task understanding API error:', error);
             return {
                 topic: 'General task',
-                action: 'Work on task'
+                action: 'Work on task',
+                effectiveness: 'Moderately effective - API error occurred'
             };
         }
     }

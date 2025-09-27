@@ -4,7 +4,6 @@ class TunnlPopup {
     constructor() {
         this.currentView = 'main'; // 'main' or 'detail'
         this.selectedTaskId = null;
-        this.lockEndTime = null;
         this.pendingTaskText = null; // For task confirmation
         this.init();
     }
@@ -140,34 +139,11 @@ class TunnlPopup {
             confirmTaskBtn.addEventListener('click', () => this.confirmTask());
         }
 
-        // Timer buttons in add task view
-        const addTimerBtns = document.querySelectorAll('#add-task-view .timer-btn');
-        addTimerBtns.forEach(btn => {
-            btn.addEventListener('click', () => this.selectAddTaskTimer(btn));
-        });
-
-        // Custom timer input in add task view
-        const addCustomMinutes = document.getElementById('custom-minutes');
-        if (addCustomMinutes) {
-            addCustomMinutes.addEventListener('input', () => this.handleAddTaskCustomTimer());
-        }
-
-        // Timer buttons
-        const timerBtns = document.querySelectorAll('.timer-btn');
-        timerBtns.forEach(btn => {
-            btn.addEventListener('click', () => this.selectTimer(btn));
-        });
 
         // Delete task button
         const deleteBtn = document.getElementById('delete-task');
         if (deleteBtn) {
             deleteBtn.addEventListener('click', () => this.deleteTask());
-        }
-
-        // Custom minutes input
-        const customMinutes = document.getElementById('custom-minutes');
-        if (customMinutes) {
-            customMinutes.addEventListener('input', () => this.handleCustomTimer());
         }
 
         // Enter key handlers
@@ -248,12 +224,6 @@ class TunnlPopup {
             editor.value = '';
             this.updateCharCounter();
         }
-        // Clear timer selections
-        document.querySelectorAll('#add-task-view .timer-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        const customInput = document.getElementById('custom-minutes');
-        if (customInput) customInput.value = '';
         // Clear validation message
         this.clearAddTaskValidationMessage();
     }
@@ -266,33 +236,6 @@ class TunnlPopup {
         }
     }
 
-    selectAddTaskTimer(button) {
-        // Remove selection from other timer buttons in add task view
-        document.querySelectorAll('#add-task-view .timer-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        
-        // Select this button
-        button.classList.add('selected');
-        
-        // Clear custom input if a preset is selected
-        const customInput = document.getElementById('custom-minutes');
-        if (customInput) {
-            customInput.value = '';
-        }
-    }
-
-    handleAddTaskCustomTimer() {
-        const customInput = document.getElementById('custom-minutes');
-        const minutes = parseInt(customInput.value);
-        
-        if (minutes && minutes > 0) {
-            // Remove selection from preset buttons
-            document.querySelectorAll('#add-task-view .timer-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-        }
-    }
 
     clearAddTaskValidationMessage() {
         const messageEl = document.getElementById('add-task-validation-message');
@@ -352,9 +295,22 @@ class TunnlPopup {
     async confirmTask() {
         if (!this.pendingTaskText) return;
         
+        // Create task object
+        const taskObject = {
+            text: this.pendingTaskText,
+            completed: false,
+            createdAt: Date.now()
+        };
+        
         // Add the task
-        this.settings.tasks.push(this.pendingTaskText);
+        this.settings.tasks.push(taskObject);
         await this.saveSettings();
+
+        // If this is the first task or no current task is set, make it active
+        if (this.settings.tasks.length === 1 && !this.settings.currentTask) {
+            this.settings.currentTask = { text: taskObject.text, index: 0, setAt: Date.now() };
+            await this.saveSettings();
+        }
 
         // Clear input and hide confirmation
         const taskInput = document.getElementById('new-task-text');
@@ -397,17 +353,17 @@ class TunnlPopup {
 
         try {
             // Get task understanding from LLM
-            const response = await this.sendMessageWithRetry({
-                type: 'VALIDATE_TASK',
-                taskText: taskText
-            }, 5, 200);
+                const response = await this.sendMessageWithRetry({
+                    type: 'VALIDATE_TASK',
+                    taskText: taskText
+                }, 5, 200);
 
-            if (response.success) {
+                if (response.success) {
                 const understanding = response.result;
                 // Always show confirmation step with task understanding
                 this.showTaskConfirmation(taskText, understanding);
-                return;
-            } else {
+                        return;
+                    } else {
                 console.error('Task understanding failed:', response.error);
                 // Fallback to basic understanding
                 this.showTaskConfirmation(taskText, { 
@@ -421,7 +377,7 @@ class TunnlPopup {
             // Auto-return to main view after a short delay
             setTimeout(() => {
                 this.showMainView();
-                this.updateUI();
+            this.updateUI();
             }, 1500);
 
         } catch (error) {
@@ -493,16 +449,19 @@ class TunnlPopup {
         // Update task list
         this.updateTaskList();
 
-        // Update switching notice
-        this.updateSwitchingNotice();
+        // Check if there's an active lock and show the display
+        this.checkAndShowLockDisplay();
+    }
 
-        // Load lock time from storage
-        chrome.storage.local.get(['lockEndTime'], (result) => {
-            if (result.lockEndTime) {
-                this.lockEndTime = result.lockEndTime;
-                this.updateSwitchingNotice();
+    checkAndShowLockDisplay() {
+        if (this.settings.currentTask && this.settings.currentTask.setAt) {
+            const elapsedMs = Date.now() - this.settings.currentTask.setAt;
+            const elapsedMinutes = elapsedMs / (1000 * 60);
+            
+            if (elapsedMinutes < 5) {
+                this.showTaskSwitchLocked();
             }
-        });
+        }
     }
 
     renderCurrentTaskBanner() {
@@ -560,8 +519,16 @@ class TunnlPopup {
         if (completedTasks) completedTasks.innerHTML = '';
 
         // Separate active and completed tasks
-        const activeTasks = this.settings.tasks?.filter(task => !task.completed) || [];
-        const completedTasksList = this.settings.tasks?.filter(task => task.completed) || [];
+        const activeTasks = this.settings.tasks?.filter(task => {
+            // Handle both old string format and new object format
+            if (typeof task === 'string') return true;
+            return !task.completed;
+        }) || [];
+        const completedTasksList = this.settings.tasks?.filter(task => {
+            // Handle both old string format and new object format
+            if (typeof task === 'string') return false;
+            return task.completed;
+        }) || [];
 
         // Ensure there's always an active task - set first task as active if none is set
         if (activeTasks.length > 0 && !this.settings.currentTask) {
@@ -578,8 +545,14 @@ class TunnlPopup {
         console.log('🔍 Settings currentTask:', this.settings.currentTask);
 
         // Reorder active tasks: current task first, then others
-        const currentTask = activeTasks.find(task => (task.text || task) === currentTaskText);
-        const otherTasks = activeTasks.filter(task => (task.text || task) !== currentTaskText);
+        const currentTask = activeTasks.find(task => {
+            const taskTextToCompare = task.text || task;
+            return taskTextToCompare === currentTaskText;
+        });
+        const otherTasks = activeTasks.filter(task => {
+            const taskTextToCompare = task.text || task;
+            return taskTextToCompare !== currentTaskText;
+        });
         const reorderedTasks = currentTask ? [currentTask, ...otherTasks] : activeTasks;
 
         // Render active tasks in reordered sequence
@@ -741,6 +714,19 @@ class TunnlPopup {
 
     async setCurrentTask(taskText) {
         try {
+            // Check if there's a 5-minute lock since last task switch
+            if (this.settings.currentTask && this.settings.currentTask.setAt) {
+                const elapsedMs = Date.now() - this.settings.currentTask.setAt;
+                const elapsedMinutes = elapsedMs / (1000 * 60);
+                
+                if (elapsedMinutes < 5) {
+                    const remainingMinutes = Math.ceil(5 - elapsedMinutes);
+                    this.showMessage(`⏰ Task switching locked for ${remainingMinutes} more minutes.`, 'warning');
+                    this.showTaskSwitchLocked();
+                    return;
+                }
+            }
+            
             const taskIndex = this.settings.tasks.findIndex(task => (task.text || task) === taskText);
             const response = await this.sendMessageWithRetry({
                 type: 'SET_CURRENT_TASK',
@@ -763,6 +749,72 @@ class TunnlPopup {
             }
         } catch (e) {
             console.error('SET_CURRENT_TASK error', e);
+        }
+    }
+
+    showTaskSwitchLocked() {
+        // Create or update the lock display
+        let lockDisplay = document.getElementById('task-switch-lock');
+        if (!lockDisplay) {
+            lockDisplay = document.createElement('div');
+            lockDisplay.id = 'task-switch-lock';
+            lockDisplay.className = 'task-switch-lock';
+            document.body.appendChild(lockDisplay);
+        }
+
+        // Update the display with current remaining time
+        this.updateTaskSwitchLockDisplay();
+        
+        // Show the lock display
+        lockDisplay.style.display = 'block';
+        
+        // Start pulsing animation
+        lockDisplay.classList.add('pulsing');
+        
+        // Update every second
+        this.lockUpdateInterval = setInterval(() => {
+            this.updateTaskSwitchLockDisplay();
+        }, 1000);
+    }
+
+    updateTaskSwitchLockDisplay() {
+        const lockDisplay = document.getElementById('task-switch-lock');
+        if (!lockDisplay || !this.settings.currentTask || !this.settings.currentTask.setAt) {
+            return;
+        }
+
+        const elapsedMs = Date.now() - this.settings.currentTask.setAt;
+        const elapsedMinutes = elapsedMs / (1000 * 60);
+        
+        if (elapsedMinutes >= 5) {
+            // Lock period is over
+            this.hideTaskSwitchLocked();
+            return;
+        }
+
+        const remainingMinutes = Math.ceil(5 - elapsedMinutes);
+        const remainingSeconds = Math.ceil((5 * 60) - (elapsedMs / 1000));
+        
+        lockDisplay.innerHTML = `
+            <div class="lock-content">
+                <div class="lock-icon">🔒</div>
+                <div class="lock-text">Task switching locked</div>
+                <div class="lock-timer">${remainingMinutes}:${(remainingSeconds % 60).toString().padStart(2, '0')}</div>
+                <div class="lock-subtext">You can still complete or delete tasks</div>
+            </div>
+        `;
+    }
+
+    hideTaskSwitchLocked() {
+        const lockDisplay = document.getElementById('task-switch-lock');
+        if (lockDisplay) {
+            lockDisplay.style.display = 'none';
+            lockDisplay.classList.remove('pulsing');
+        }
+        
+        if (this.lockUpdateInterval) {
+            clearInterval(this.lockUpdateInterval);
+            this.lockUpdateInterval = null;
         }
     }
 
@@ -896,82 +948,9 @@ class TunnlPopup {
         }
     }
 
-    selectTimer(button) {
-        // Remove selection from other timer buttons
-        document.querySelectorAll('.timer-btn').forEach(btn => {
-            btn.classList.remove('selected');
-        });
-        
-        // Select this button
-        button.classList.add('selected');
-        
-        // Clear custom input if a preset is selected
-        const customInput = document.getElementById('custom-minutes');
-        if (customInput) {
-            customInput.value = '';
-        }
 
-        // Get minutes and potentially start timer
-        const minutes = parseInt(button.getAttribute('data-minutes'));
-        this.setLockTimer(minutes);
-    }
 
-    handleCustomTimer() {
-        const customInput = document.getElementById('custom-minutes');
-        const minutes = parseInt(customInput.value);
-        
-        if (minutes && minutes > 0) {
-            // Remove selection from preset buttons
-            document.querySelectorAll('.timer-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-            
-            this.setLockTimer(minutes);
-        }
-    }
 
-    setLockTimer(minutes) {
-        if (!minutes || minutes <= 0) return;
-        
-        this.lockEndTime = Date.now() + (minutes * 60 * 1000);
-        
-        // Save the lock time to storage
-        chrome.storage.local.set({
-            lockEndTime: this.lockEndTime,
-            lockedTaskId: this.selectedTaskId
-        });
-
-        // Update the switching notice
-        this.updateSwitchingNotice();
-        
-        // Go back to main view
-        this.showMainView();
-    }
-
-    updateSwitchingNotice() {
-        const notice = document.querySelector('.switching-notice');
-        const noticeText = document.querySelector('.notice-text');
-        
-        if (this.lockEndTime && Date.now() < this.lockEndTime) {
-            const remainingMs = this.lockEndTime - Date.now();
-            const remainingMinutes = Math.ceil(remainingMs / (1000 * 60));
-            const minutes = remainingMinutes % 60;
-            const hours = Math.floor(remainingMinutes / 60);
-            
-            let timeText = '';
-            if (hours > 0) {
-                timeText = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} hr`;
-            } else {
-                timeText = `${minutes.toString().padStart(2, '0')}:${(remainingMs % 60000 / 1000).toFixed(0).padStart(2, '0')} min`;
-            }
-            
-            noticeText.textContent = `Switching tasks is locked for ${timeText}`;
-            notice.style.display = 'flex';
-        } else {
-            notice.style.display = 'none';
-            this.lockEndTime = null;
-        }
-    }
 
     async deleteTask() {
         if (!this.selectedTaskId) return;
@@ -1041,14 +1020,17 @@ class TunnlPopup {
                         completed: true,
                         completedAt: Date.now()
                     };
-                } else {
+            } else {
                     this.settings.tasks[taskIndex].completed = true;
                     this.settings.tasks[taskIndex].completedAt = Date.now();
                 }
 
-                // If this was the current task, clear it
-                if (this.settings.currentTask?.text === taskText) {
+                // If this was the current task, clear it (this works even if task is locked)
+                const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
+                if (currentTaskText === taskText) {
                     this.settings.currentTask = null;
+                    // Hide the lock display since current task is cleared
+                    this.hideTaskSwitchLocked();
                     // Also clear it in the background script
                     await this.sendMessageWithRetry({
                         type: 'CLEAR_CURRENT_TASK'
@@ -1093,12 +1075,12 @@ class TunnlPopup {
                 await this.saveSettings();
 
                 // Update the UI
-                this.updateTaskList();
+                    this.updateTaskList();
                 this.updateUI();
 
                 console.log('🔄 Task moved back to active:', taskText);
-            }
-        } catch (error) {
+                }
+            } catch (error) {
             console.error('Error reversing task:', error);
         }
     }

@@ -674,15 +674,6 @@ class TunnlBackground {
     async analyzeUrl(url) {
         console.log('🔍 Analyzing URL:', url);
         
-        // Mock mode - block everything for testing
-        console.log('🎭 Mock mode enabled - blocking all URLs for testing');
-        return { 
-            shouldBlock: true, 
-            reason: 'Mock mode - testing block screen', 
-            activityUnderstanding: 'Mock mode active for testing', 
-            confidence: 1.0 
-        };
-        
         if (!this.settings.openaiApiKey) {
             console.log('❌ Extension not configured - API key missing');
             return { shouldBlock: false, reason: 'Not configured', activityUnderstanding: 'No API key', confidence: 0 };

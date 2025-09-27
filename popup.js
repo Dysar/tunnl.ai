@@ -808,11 +808,29 @@ class TunnlPopup {
         }
     }
 
-    updateStats() {
-        // Update with real data when available
-        document.getElementById('urls-analyzed').textContent = '317';
-        document.getElementById('focus-score').textContent = '97%';
-        document.getElementById('urls-blocked').textContent = '16';
+    async updateStats() {
+        try {
+            const response = await this.sendMessageWithRetry({ type: 'GET_STATISTICS' });
+            if (response.success && response.statistics) {
+                const stats = response.statistics;
+                document.getElementById('urls-analyzed').textContent = stats.urlsAnalyzed;
+                document.getElementById('focus-score').textContent = stats.focusScore;
+                document.getElementById('urls-blocked').textContent = stats.urlsBlocked;
+                console.log('📊 Statistics updated:', stats);
+            } else {
+                console.error('Failed to load statistics:', response.error);
+                // Fallback to default values
+                document.getElementById('urls-analyzed').textContent = '0';
+                document.getElementById('focus-score').textContent = '0%';
+                document.getElementById('urls-blocked').textContent = '0';
+            }
+        } catch (error) {
+            console.error('Error loading statistics:', error);
+            // Fallback to default values
+            document.getElementById('urls-analyzed').textContent = '0';
+            document.getElementById('focus-score').textContent = '0%';
+            document.getElementById('urls-blocked').textContent = '0';
+        }
     }
 
 }

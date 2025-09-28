@@ -5,6 +5,7 @@ class TunnlPopup {
         this.currentView = 'main'; // 'main' or 'detail'
         this.selectedTaskId = null;
         this.pendingTaskText = null; // For task confirmation
+        this.lockHideTimeout = null; // For auto-hiding the lock overlay
         this.init();
     }
 
@@ -186,21 +187,21 @@ class TunnlPopup {
 
             if (response.success && response.validation) {
                 const validation = response.validation;
-                
+
                 if (validation.valid) {
                     // Check if this is a new user (no existing tasks)
                     const isNewUser = this.settings.tasks.length === 0;
-                    
+
                     // Save the API key
                     this.settings.openaiApiKey = apiKey;
-                    
+
                     // Add a sample task for new users
                     if (isNewUser) {
                         this.settings.tasks.push("Research competitor pricing for SaaS tools");
                     }
-                    
+
                     await this.saveSettings();
-                    
+
                     this.showMessage(`✅ ${validation.message}`, 'success');
                     this.updateUI();
                 } else {
@@ -251,7 +252,7 @@ class TunnlPopup {
         if (messageEl) {
             messageEl.classList.remove('hidden');
             messageEl.className = `validation-message-inline ${type}`;
-            
+
             // Show full message since it's now scrollable
             if (text.includes('\n')) {
                 messageEl.innerHTML = text.replace(/\n/g, '<br>');
@@ -264,13 +265,13 @@ class TunnlPopup {
     showTaskConfirmation(taskText, validation) {
         // Hide validation message
         this.clearAddTaskValidationMessage();
-        
+
         // Show confirmation section
         const confirmationEl = document.getElementById('task-confirmation');
         if (confirmationEl) {
             confirmationEl.classList.remove('hidden');
         }
-        
+
         // Populate topic, action, and effectiveness
         const topicEl = document.getElementById('confirmation-topic');
         const actionEl = document.getElementById('confirmation-action');
@@ -278,7 +279,7 @@ class TunnlPopup {
         if (topicEl) topicEl.textContent = validation.topic || 'Unknown topic';
         if (actionEl) actionEl.textContent = validation.action || 'Unknown action';
         if (effectivenessEl) effectivenessEl.textContent = validation.effectiveness || 'Effectiveness not assessed';
-        
+
         // Store current task text for confirmation
         this.pendingTaskText = taskText;
     }
@@ -288,20 +289,20 @@ class TunnlPopup {
         if (confirmationEl) {
             confirmationEl.classList.add('hidden');
         }
-        
+
         this.pendingTaskText = null;
     }
 
     async confirmTask() {
         if (!this.pendingTaskText) return;
-        
+
         // Create task object
         const taskObject = {
             text: this.pendingTaskText,
             completed: false,
             createdAt: Date.now()
         };
-        
+
         // Add the task
         this.settings.tasks.push(taskObject);
         await this.saveSettings();
@@ -315,10 +316,10 @@ class TunnlPopup {
         // Clear input and hide confirmation
         const taskInput = document.getElementById('new-task-text');
         if (taskInput) taskInput.value = '';
-        
+
         this.hideTaskConfirmation();
         this.showAddTaskValidationMessage('✅ Task added successfully!', 'success');
-        
+
         // Auto-return to main view after a short delay
         setTimeout(() => {
             this.showMainView();
@@ -353,31 +354,31 @@ class TunnlPopup {
 
         try {
             // Get task understanding from LLM
-                const response = await this.sendMessageWithRetry({
-                    type: 'VALIDATE_TASK',
-                    taskText: taskText
-                }, 5, 200);
+            const response = await this.sendMessageWithRetry({
+                type: 'VALIDATE_TASK',
+                taskText: taskText
+            }, 5, 200);
 
-                if (response.success) {
+            if (response.success) {
                 const understanding = response.result;
                 // Always show confirmation step with task understanding
                 this.showTaskConfirmation(taskText, understanding);
-                        return;
-                    } else {
+                return;
+            } else {
                 console.error('Task understanding failed:', response.error);
                 // Fallback to basic understanding
-                this.showTaskConfirmation(taskText, { 
-                    topic: 'General task', 
+                this.showTaskConfirmation(taskText, {
+                    topic: 'General task',
                     action: 'Work on task',
                     effectiveness: 'Moderately effective - analysis failed'
                 });
                 return;
             }
-            
+
             // Auto-return to main view after a short delay
             setTimeout(() => {
                 this.showMainView();
-            this.updateUI();
+                this.updateUI();
             }, 1500);
 
         } catch (error) {
@@ -457,7 +458,7 @@ class TunnlPopup {
         if (this.settings.currentTask && this.settings.currentTask.setAt) {
             const elapsedMs = Date.now() - this.settings.currentTask.setAt;
             const elapsedMinutes = elapsedMs / (1000 * 60);
-            
+
             if (elapsedMinutes < 5) {
                 this.showTaskSwitchLocked();
             }
@@ -559,7 +560,7 @@ class TunnlPopup {
         reorderedTasks.forEach((task, index) => {
             const taskItem = document.createElement('div');
             taskItem.className = 'task-item';
-            
+
             // Add active class if this is the current task
             const taskText = task.text || task;
             const normalizedCurrentTask = typeof currentTaskText === 'object' ? currentTaskText.text : currentTaskText;
@@ -568,7 +569,7 @@ class TunnlPopup {
             if (normalizedCurrentTask === normalizedTaskText) {
                 taskItem.classList.add('active');
                 console.log('✅ Added active class to task:', normalizedTaskText);
-                
+
                 // Add move-to-top animation if this task moved to the top
                 if (index === 0) {
                     taskItem.classList.add('moving-to-top');
@@ -601,7 +602,7 @@ class TunnlPopup {
                 </svg>
             `;
             deleteButton.title = 'Delete task';
-            
+
             // Add click handler for delete button (stop propagation to prevent task selection)
             deleteButton.addEventListener('click', (e) => {
                 e.stopPropagation(); // Prevent task selection when clicking delete
@@ -621,7 +622,7 @@ class TunnlPopup {
                 if (e.target.closest('.task-delete-btn') || e.target.closest('.task-radio')) {
                     return;
                 }
-                
+
                 if (normalizedCurrentTask === normalizedTaskText) {
                     // If clicking on current task, show detail view
                     this.showTaskDetail(task.id || normalizedTaskText);
@@ -668,7 +669,7 @@ class TunnlPopup {
                 </svg>
             `;
             deleteButton.title = 'Delete task';
-            
+
             // Add click handler for delete button
             deleteButton.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -693,6 +694,19 @@ class TunnlPopup {
 
     async setCurrentTaskByIndex(index) {
         try {
+            // Check if there's a 5-minute lock since last task switch
+            if (this.settings.currentTask && this.settings.currentTask.setAt) {
+                const elapsedMs = Date.now() - this.settings.currentTask.setAt;
+                const elapsedMinutes = elapsedMs / (1000 * 60);
+
+                if (elapsedMinutes < 5) {
+                    const remainingMinutes = Math.ceil(5 - elapsedMinutes);
+                    this.showMessage(`⏰ Task switching locked for ${remainingMinutes} more minutes.`, 'warning');
+                    this.showTaskSwitchLocked();
+                    return;
+                }
+            }
+
             const response = await this.sendMessageWithRetry({
                 type: 'SET_CURRENT_TASK',
                 index
@@ -718,7 +732,7 @@ class TunnlPopup {
             if (this.settings.currentTask && this.settings.currentTask.setAt) {
                 const elapsedMs = Date.now() - this.settings.currentTask.setAt;
                 const elapsedMinutes = elapsedMs / (1000 * 60);
-                
+
                 if (elapsedMinutes < 5) {
                     const remainingMinutes = Math.ceil(5 - elapsedMinutes);
                     this.showMessage(`⏰ Task switching locked for ${remainingMinutes} more minutes.`, 'warning');
@@ -726,7 +740,7 @@ class TunnlPopup {
                     return;
                 }
             }
-            
+
             const taskIndex = this.settings.tasks.findIndex(task => (task.text || task) === taskText);
             const response = await this.sendMessageWithRetry({
                 type: 'SET_CURRENT_TASK',
@@ -736,10 +750,10 @@ class TunnlPopup {
             if (response?.success) {
                 this.settings.currentTask = response.currentTask || { text: taskText, index: taskIndex, setAt: Date.now() };
                 console.log('✅ Current task set to:', this.settings.currentTask);
-                
+
                 // Update UI first to get the new DOM structure
                 this.updateUI();
-                
+
                 // Then add animation to the newly rendered current task
                 setTimeout(() => {
                     this.animateTaskSelection(taskText);
@@ -764,14 +778,25 @@ class TunnlPopup {
 
         // Update the display with current remaining time
         this.updateTaskSwitchLockDisplay();
-        
+
         // Show the lock display
         lockDisplay.style.display = 'block';
-        
+
         // Start pulsing animation
         lockDisplay.classList.add('pulsing');
-        
-        // Update every second
+
+        // Auto-hide after 4 seconds
+        if (this.lockHideTimeout) {
+            clearTimeout(this.lockHideTimeout);
+        }
+        this.lockHideTimeout = setTimeout(() => {
+            this.hideTaskSwitchLocked();
+        }, 4000);
+
+        // Update every second while visible
+        if (this.lockUpdateInterval) {
+            clearInterval(this.lockUpdateInterval);
+        }
         this.lockUpdateInterval = setInterval(() => {
             this.updateTaskSwitchLockDisplay();
         }, 1000);
@@ -785,7 +810,7 @@ class TunnlPopup {
 
         const elapsedMs = Date.now() - this.settings.currentTask.setAt;
         const elapsedMinutes = elapsedMs / (1000 * 60);
-        
+
         if (elapsedMinutes >= 5) {
             // Lock period is over
             this.hideTaskSwitchLocked();
@@ -794,7 +819,7 @@ class TunnlPopup {
 
         const remainingMinutes = Math.ceil(5 - elapsedMinutes);
         const remainingSeconds = Math.ceil((5 * 60) - (elapsedMs / 1000));
-        
+
         lockDisplay.innerHTML = `
             <div class="lock-content">
                 <div class="lock-icon">🔒</div>
@@ -808,13 +833,25 @@ class TunnlPopup {
     hideTaskSwitchLocked() {
         const lockDisplay = document.getElementById('task-switch-lock');
         if (lockDisplay) {
-            lockDisplay.style.display = 'none';
+            // Add fade-out animation
             lockDisplay.classList.remove('pulsing');
+            lockDisplay.classList.add('fade-out');
+
+            // Hide after animation completes
+            setTimeout(() => {
+                lockDisplay.style.display = 'none';
+                lockDisplay.classList.remove('fade-out');
+            }, 500);
         }
-        
+
         if (this.lockUpdateInterval) {
             clearInterval(this.lockUpdateInterval);
             this.lockUpdateInterval = null;
+        }
+
+        if (this.lockHideTimeout) {
+            clearTimeout(this.lockHideTimeout);
+            this.lockHideTimeout = null;
         }
     }
 
@@ -826,7 +863,7 @@ class TunnlPopup {
             if (textElement && textElement.textContent === taskText) {
                 // Add animation classes
                 item.classList.add('becoming-active');
-                
+
                 // Remove animation classes after animation completes
                 setTimeout(() => {
                     item.classList.remove('becoming-active');
@@ -906,7 +943,7 @@ class TunnlPopup {
     showTaskDetail(taskId) {
         this.selectedTaskId = taskId;
         this.currentView = 'detail';
-        
+
         const task = this.settings.tasks?.find(t => t.id === taskId);
         if (!task) return;
 
@@ -922,23 +959,23 @@ class TunnlPopup {
     showMainView() {
         this.currentView = 'main';
         this.selectedTaskId = null;
-        
+
         // Hide all views
         document.getElementById('task-detail').classList.add('hidden');
         document.getElementById('add-task-view').classList.add('hidden');
         document.getElementById('main-interface').classList.remove('hidden');
-        
+
         // Clear any confirmation state
         this.hideTaskConfirmation();
         this.clearAddTaskValidationMessage();
-        
+
         // Reset the add task form
         const taskInput = document.getElementById('new-task-text');
         if (taskInput) {
             taskInput.value = '';
         }
         this.updateCharCounter();
-        
+
         // Reset save button
         const saveButton = document.getElementById('save-new-task');
         if (saveButton) {
@@ -954,7 +991,7 @@ class TunnlPopup {
 
     async deleteTask() {
         if (!this.selectedTaskId) return;
-        
+
         if (confirm('Are you sure you want to delete this task?')) {
             try {
                 const response = await this.sendMessageWithRetry({
@@ -1020,7 +1057,7 @@ class TunnlPopup {
                         completed: true,
                         completedAt: Date.now()
                     };
-            } else {
+                } else {
                     this.settings.tasks[taskIndex].completed = true;
                     this.settings.tasks[taskIndex].completedAt = Date.now();
                 }
@@ -1075,12 +1112,12 @@ class TunnlPopup {
                 await this.saveSettings();
 
                 // Update the UI
-                    this.updateTaskList();
+                this.updateTaskList();
                 this.updateUI();
 
                 console.log('🔄 Task moved back to active:', taskText);
-                }
-            } catch (error) {
+            }
+        } catch (error) {
             console.error('Error reversing task:', error);
         }
     }

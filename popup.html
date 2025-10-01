@@ -52,24 +52,61 @@
                 </div>
             </div>
 
-            <!-- Task List -->
-            <div class="task-list-section">
-                <div class="task-list-header">
-                    <h3 class="task-list-title">Tasks</h3>
-                    <button id="add-task" class="btn-add">+</button>
-                </div>
-                <div id="task-list" class="task-list">
-                    <div id="task-items" class="task-items">
-                        <!-- Tasks will be populated here -->
+            <!-- Mode Toggle -->
+            <div class="mode-toggle-section">
+                <div class="mode-toggle">
+                    <span class="mode-label">On/Background Mode</span>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="extension-toggle" checked>
+                        <label for="extension-toggle" class="toggle-slider"></label>
                     </div>
                 </div>
             </div>
 
-            <!-- Completed Tasks -->
-            <div class="completed-section">
-                <h3>Completed</h3>
-                <div id="completed-tasks" class="completed-tasks">
-                    <!-- Completed tasks will be populated here -->
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button id="tasks-tab" class="tab-button active">Tasks</button>
+                <button id="categories-tab" class="tab-button">Categories</button>
+            </div>
+
+            <!-- Tasks Tab Content -->
+            <div id="tasks-content" class="tab-content active">
+                <!-- Task List -->
+                <div class="task-list-section">
+                    <div class="task-list-header">
+                        <h3 class="task-list-title">Tasks</h3>
+                        <button id="add-task" class="btn-add">+</button>
+                    </div>
+                    <div id="task-list" class="task-list">
+                        <div id="task-items" class="task-items">
+                            <!-- Tasks will be populated here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Completed Tasks -->
+                <div class="completed-section">
+                    <h3>Completed</h3>
+                    <div id="completed-tasks" class="completed-tasks">
+                        <!-- Completed tasks will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Categories Tab Content -->
+            <div id="categories-content" class="tab-content">
+                <div class="categories-section">
+                    <h3 class="categories-title">Select categories to block</h3>
+                    <div class="categories-grid">
+                        <button class="category-button" data-category="gambling">Gambling</button>
+                        <button class="category-button" data-category="nsfw">NSFW</button>
+                        <button class="category-button" data-category="social-media">Social Media</button>
+                        <button class="category-button" data-category="news">News</button>
+                        <button class="category-button" data-category="gaming">Gaming</button>
+                        <button class="category-button" data-category="music">Music</button>
+                        <button class="category-button" data-category="shopping">Shopping</button>
+                        <button class="category-button" data-category="travel">Travel</button>
+                    </div>
                 </div>
             </div>
         </div>

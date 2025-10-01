@@ -62,7 +62,9 @@ class TunnlPopup {
             extensionEnabled: true,
             blockedSites: [],
             stats: { blockedCount: 0, analyzedCount: 0 },
-            taskValidationEnabled: true
+            taskValidationEnabled: true,
+            selectedCategories: [], // Array of selected category names
+            useCategories: false // Whether to use categories instead of tasks
         };
     }
 
@@ -161,6 +163,28 @@ class TunnlPopup {
         if (clearBtn) {
             clearBtn.addEventListener('click', () => this.clearCurrentTask());
         }
+
+        // Tab navigation
+        const tasksTab = document.getElementById('tasks-tab');
+        const categoriesTab = document.getElementById('categories-tab');
+        if (tasksTab) {
+            tasksTab.addEventListener('click', () => this.switchTab('tasks'));
+        }
+        if (categoriesTab) {
+            categoriesTab.addEventListener('click', () => this.switchTab('categories'));
+        }
+
+        // Extension toggle
+        const extensionToggle = document.getElementById('extension-toggle');
+        if (extensionToggle) {
+            extensionToggle.addEventListener('change', (e) => this.toggleExtension(e.target.checked));
+        }
+
+        // Category buttons
+        const categoryButtons = document.querySelectorAll('.category-button');
+        categoryButtons.forEach(button => {
+            button.addEventListener('click', (e) => this.toggleCategory(e.target.dataset.category));
+        });
     }
 
     async saveApiKey() {
@@ -449,6 +473,22 @@ class TunnlPopup {
         // Populate form fields
         const apiKeyEl = document.getElementById('api-key');
         if (apiKeyEl) apiKeyEl.value = this.settings.openaiApiKey || '';
+
+        // Update extension toggle
+        const extensionToggle = document.getElementById('extension-toggle');
+        if (extensionToggle) {
+            extensionToggle.checked = this.settings.extensionEnabled;
+        }
+
+        // Update tab state
+        if (this.settings.useCategories) {
+            this.switchTab('categories');
+        } else {
+            this.switchTab('tasks');
+        }
+
+        // Update category buttons
+        this.updateCategoryButtons();
 
         // Update task list
         this.updateTaskList();
@@ -1174,6 +1214,88 @@ class TunnlPopup {
             document.getElementById('focus-score').textContent = '0%';
             document.getElementById('urls-blocked').textContent = '0';
         }
+    }
+
+    // Tab switching functionality
+    switchTab(tabName) {
+        // Update tab buttons
+        const tasksTab = document.getElementById('tasks-tab');
+        const categoriesTab = document.getElementById('categories-tab');
+        const tasksContent = document.getElementById('tasks-content');
+        const categoriesContent = document.getElementById('categories-content');
+
+        if (tabName === 'tasks') {
+            tasksTab.classList.add('active');
+            categoriesTab.classList.remove('active');
+            tasksContent.classList.add('active');
+            categoriesContent.classList.remove('active');
+            this.settings.useCategories = false;
+        } else if (tabName === 'categories') {
+            categoriesTab.classList.add('active');
+            tasksTab.classList.remove('active');
+            categoriesContent.classList.add('active');
+            tasksContent.classList.remove('active');
+            this.settings.useCategories = true;
+        }
+
+        this.saveSettings();
+    }
+
+    // Extension toggle functionality
+    async toggleExtension(enabled) {
+        try {
+            const response = await this.sendMessageWithRetry({
+                type: 'TOGGLE_EXTENSION',
+                enabled: enabled
+            });
+            if (response.success) {
+                this.settings.extensionEnabled = enabled;
+                this.showMessage(enabled ? 'Extension enabled' : 'Extension disabled', 'success');
+            } else {
+                this.showMessage('Failed to toggle extension', 'error');
+                // Revert the toggle
+                document.getElementById('extension-toggle').checked = !enabled;
+            }
+        } catch (error) {
+            console.error('Error toggling extension:', error);
+            this.showMessage('Error toggling extension', 'error');
+            // Revert the toggle
+            document.getElementById('extension-toggle').checked = !enabled;
+        }
+    }
+
+    // Category selection functionality
+    toggleCategory(categoryName) {
+        const button = document.querySelector(`[data-category="${categoryName}"]`);
+        if (!button) return;
+
+        const isSelected = button.classList.contains('selected');
+        
+        if (isSelected) {
+            // Remove from selected categories
+            button.classList.remove('selected');
+            this.settings.selectedCategories = this.settings.selectedCategories.filter(cat => cat !== categoryName);
+        } else {
+            // Add to selected categories
+            button.classList.add('selected');
+            this.settings.selectedCategories.push(categoryName);
+        }
+
+        this.saveSettings();
+        console.log('Selected categories:', this.settings.selectedCategories);
+    }
+
+    // Update category buttons based on settings
+    updateCategoryButtons() {
+        const categoryButtons = document.querySelectorAll('.category-button');
+        categoryButtons.forEach(button => {
+            const categoryName = button.dataset.category;
+            if (this.settings.selectedCategories.includes(categoryName)) {
+                button.classList.add('selected');
+            } else {
+                button.classList.remove('selected');
+            }
+        });
     }
 
 }

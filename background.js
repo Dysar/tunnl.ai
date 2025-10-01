@@ -117,7 +117,9 @@ class TunnlBackground {
             blockedSites: result.blockedSites || [],
             stats: result.stats || { blockedCount: 0, analyzedCount: 0 },
             allowlist: Array.isArray(result.allowlist) ? result.allowlist : [],
-            taskValidationEnabled: result.taskValidationEnabled !== false
+            taskValidationEnabled: result.taskValidationEnabled !== false,
+            selectedCategories: result.selectedCategories || [],
+            useCategories: result.useCategories || false
         };
     }
 
@@ -446,6 +448,16 @@ class TunnlBackground {
                 this.settings.allowlist = Array.isArray(changes.allowlist.newValue) ? changes.allowlist.newValue : [];
                 console.log('Allowlist updated, count:', this.settings.allowlist.length);
             }
+
+            if (changes.selectedCategories) {
+                this.settings.selectedCategories = Array.isArray(changes.selectedCategories.newValue) ? changes.selectedCategories.newValue : [];
+                console.log('Selected categories updated:', this.settings.selectedCategories);
+            }
+
+            if (changes.useCategories !== undefined) {
+                this.settings.useCategories = changes.useCategories.newValue;
+                console.log('Use categories mode updated:', this.settings.useCategories);
+            }
         });
     }
 
@@ -555,9 +567,17 @@ class TunnlBackground {
         });
 
         try {
-            const taskKey = this.settings.currentTask?.text || '';
-            const contextKey = this.recentUrls.slice(0, 3).join('|'); // Use first 3 URLs for context
-            const cacheKey = `${url}||${taskKey}||${contextKey}`;
+            // Create cache key based on mode
+            let cacheKey;
+            if (this.settings.useCategories) {
+                const categoriesKey = this.settings.selectedCategories.join(',');
+                const contextKey = this.recentUrls.slice(0, 3).join('|'); // Use first 3 URLs for context
+                cacheKey = `${url}||categories:${categoriesKey}||${contextKey}`;
+            } else {
+                const taskKey = this.settings.currentTask?.text || '';
+                const contextKey = this.recentUrls.slice(0, 3).join('|'); // Use first 3 URLs for context
+                cacheKey = `${url}||${taskKey}||${contextKey}`;
+            }
             
             console.log('💾 Cache check:', {
                 cacheKey: cacheKey.substring(0, 100) + '...',
@@ -685,21 +705,122 @@ class TunnlBackground {
             return { shouldBlock: false, reason: 'Allowlisted site', activityUnderstanding: 'Site is in allowlist', confidence: 1.0 };
         }
 
-        const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
-        const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
-        if (!normalizedCurrentTaskText) {
-            console.log('⚠️ No current task selected - allowing URL to avoid overblocking');
-            return { shouldBlock: false, reason: 'No current task selected', activityUnderstanding: 'No active task', confidence: 0.5 };
+        // Check if using categories or tasks
+        if (this.settings.useCategories) {
+            if (!this.settings.selectedCategories || this.settings.selectedCategories.length === 0) {
+                console.log('⚠️ No categories selected - allowing URL to avoid overblocking');
+                return { shouldBlock: false, reason: 'No categories selected', activityUnderstanding: 'No categories selected', confidence: 0.5 };
+            }
+        } else {
+            const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
+            const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
+            if (!normalizedCurrentTaskText) {
+                console.log('⚠️ No current task selected - allowing URL to avoid overblocking');
+                return { shouldBlock: false, reason: 'No current task selected', activityUnderstanding: 'No active task', confidence: 0.5 };
+            }
         }
 
-        console.log('📋 Analysis context:', {
-            currentTask: normalizedCurrentTaskText,
-            recentUrls: this.recentUrls,
-            urlToAnalyze: url
-        });
+        // Prepare analysis context based on mode
+        let analysisContext;
+        if (this.settings.useCategories) {
+            analysisContext = {
+                selectedCategories: this.settings.selectedCategories,
+                recentUrls: this.recentUrls,
+                urlToAnalyze: url
+            };
+            console.log('📋 Category analysis context:', analysisContext);
+        } else {
+            const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
+            const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
+            analysisContext = {
+                currentTask: normalizedCurrentTaskText,
+                recentUrls: this.recentUrls,
+                urlToAnalyze: url
+            };
+            console.log('📋 Task analysis context:', analysisContext);
+        }
 
         try {
             const response = await this.retryRequest(async () => {
+                // Prepare system prompt based on mode
+                let systemPrompt;
+                if (this.settings.useCategories) {
+                    systemPrompt = `
+                    You are a productivity assistant that helps users stay focused by blocking distracting websites based on selected categories.
+                    Analyze the given URL and determine if it belongs to any of the selected categories that should be blocked.
+
+                    Selected categories to block: ${this.settings.selectedCategories.join(', ')}
+
+                    Recent browsing context (last 5 URLs visited):
+                    ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
+
+                    Current URL to analyze: ${url}
+
+                    Respond with a JSON object containing:
+                    - "shouldBlock": boolean (true if the URL belongs to any of the selected categories)
+                    - "reason": string (brief explanation of which category it matches and why it should be blocked)
+                    - "activityUnderstanding": string (brief explanation of what type of content this URL provides)
+                    - "confidence": number (0-1, how confident you are in this decision)
+
+                    Category definitions:
+                    - "gambling": Online casinos, betting sites, poker, sports betting, lottery sites
+                    - "nsfw": Adult content, pornography, explicit material
+                    - "social-media": Facebook, Twitter, Instagram, TikTok, LinkedIn, Snapchat, Reddit, Discord
+                    - "news": News websites, current events, political news, celebrity news
+                    - "gaming": Gaming websites, game stores, gaming forums, streaming platforms for games
+                    - "music": Music streaming, music videos, music news, concert tickets
+                    - "shopping": E-commerce sites, online stores, deal sites, auction sites
+                    - "travel": Travel booking, vacation planning, hotel booking, flight booking
+
+                    Guidelines:
+                    - Be precise in category matching - only block if the URL clearly belongs to the selected categories
+                    - Consider the main purpose of the website, not just incidental content
+                    - Always allow: search engines, productivity tools, educational sites, work-related sites
+                    - If unsure about category match, lean towards allowing (productivity over restriction)
+                    - Do not block localhost, intranet, or internal company URLs
+                    `;
+                } else {
+                    const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
+                    const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
+                    systemPrompt = `
+                    You are a productivity assistant that helps users stay focused on their tasks. 
+                    Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
+
+                    Current activities/tasks: "${normalizedCurrentTaskText}"
+
+                    Recent browsing context (last 5 URLs visited):
+                    ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
+
+                    Current URL to analyze: ${url}
+
+                    Respond with a JSON object containing:
+                    - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
+                    - "reason": string (brief explanation of why it should/shouldn't be blocked)
+                    - "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
+                    - "confidence": number (0-1, how confident you are in this decision)
+
+                    Guidelines:
+                    - Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
+                    - Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
+                    - Use the recent browsing context to understand the user's workflow and intent
+                    - Consider browsing patterns: if user is researching a topic, allow related sites even if not directly mentioned in task
+                    - Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
+                    - Examples of task-relevant platforms:
+                      * Research tasks: Allow search engines, Wikipedia, academic sites, news sites, AND e-commerce sites (for product research)
+                      * Shopping tasks: Allow e-commerce sites, price comparison sites, review sites
+                      * Learning tasks: Allow educational platforms, documentation sites, tutorial sites
+                    - If a task mentions researching/buying/comparing a product, allow major platforms (Amazon, Google, eBay, etc.) even if the URL doesn't explicitly mention the product
+                    - Block sites that are clearly unrelated entertainment, social media (unless task-relevant), or different topic domains
+                    - Tie-break rule: When task mentions a specific domain or exact URL, always allow
+                    - Always allow: search engines, productivity tools, reference sites
+                    - If unsure about relevance, lean towards allowing (productivity over restriction)
+                    - Consider that users often need to navigate through general platform pages to reach specific content
+                    - Use recent URL context to detect if user is following a logical research/shopping/learning workflow
+                    - If you cant associate websites with the current task, get the overall topic the user is working on from the current task and recent URLs, and only block sites that are clearly unrelated to that topic
+                    - Do not block localhost, intranet, or internal company URLs
+                    `;
+                }
+
                 const response = await fetch('https://api.openai.com/v1/chat/completions', {
                     method: 'POST',
                     headers: {
@@ -711,52 +832,16 @@ class TunnlBackground {
                         messages: [
                             {
                                 role: 'system',
-                                 content: `
-                                 You are a productivity assistant that helps users stay focused on their tasks. 
-             Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
-
-             Current activities/tasks: "${normalizedCurrentTaskText}"
-
-             Recent browsing context (last 5 URLs visited):
-             ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
-
-             Current URL to analyze: ${url}
-
- Respond with a JSON object containing:
-- "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
-- "reason": string (brief explanation of why it should/shouldn't be blocked)
-- "activityUnderstanding": string (brief explanation of how you understood the user's activities - what they're trying to accomplish)
-- "confidence": number (0-1, how confident you are in this decision)
-
- Guidelines:
- - Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
- - Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
- - Use the recent browsing context to understand the user's workflow and intent
- - Consider browsing patterns: if user is researching a topic, allow related sites even if not directly mentioned in task
- - Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
- - Examples of task-relevant platforms:
-   * Research tasks: Allow search engines, Wikipedia, academic sites, news sites, AND e-commerce sites (for product research)
-   * Shopping tasks: Allow e-commerce sites, price comparison sites, review sites
-   * Learning tasks: Allow educational platforms, documentation sites, tutorial sites
- - If a task mentions researching/buying/comparing a product, allow major platforms (Amazon, Google, eBay, etc.) even if the URL doesn't explicitly mention the product
- - Block sites that are clearly unrelated entertainment, social media (unless task-relevant), or different topic domains
- - Tie-break rule: When task mentions a specific domain or exact URL, always allow
- - Always allow: search engines, productivity tools, reference sites
- - If unsure about relevance, lean towards allowing (productivity over restriction)
- - Consider that users often need to navigate through general platform pages to reach specific content
- - Use recent URL context to detect if user is following a logical research/shopping/learning workflow
- - If you cant associate websites with the current task, get the overall topic the user is working on from the current task and recent URLs, and only block sites that are clearly unrelated to that topic
- - Do not block localhost, intranet, or internal company URLs
- `
-                        },
-                        {
-                            role: 'user',
-                            content: `Analyze this URL: ${url}`
-                        }
-                    ],
-                    temperature: 0.3,
-                    max_tokens: 200
-                })
+                                content: systemPrompt
+                            },
+                            {
+                                role: 'user',
+                                content: `Analyze this URL: ${url}`
+                            }
+                        ],
+                        temperature: 0.3,
+                        max_tokens: 200
+                    })
                 });
 
                 if (!response.ok) {

@@ -5,7 +5,6 @@ class TunnlPopup {
         this.currentView = 'main'; // 'main' or 'detail'
         this.selectedTaskId = null;
         this.pendingTaskText = null; // For task confirmation
-        this.lockHideTimeout = null; // For auto-hiding the lock overlay
         this.init();
     }
 
@@ -429,9 +428,6 @@ class TunnlPopup {
         // If the removed task was the current one, set the first remaining task as active
         const cur = this.settings.currentTask;
         if (cur && (cur.index === taskIndex || cur.text === removed)) {
-            // Reset the task switch lock timer since current task is being removed
-            this.resetTaskSwitchLock();
-
             if (this.settings.tasks.length > 0) {
                 // Set the first remaining task as active
                 this.setCurrentTask(this.settings.tasks[0]);
@@ -492,21 +488,8 @@ class TunnlPopup {
 
         // Update task list
         this.updateTaskList();
-
-        // Check if there's an active lock and show the display
-        this.checkAndShowLockDisplay();
     }
 
-    checkAndShowLockDisplay() {
-        if (this.settings.currentTask && this.settings.currentTask.setAt) {
-            const elapsedMs = Date.now() - this.settings.currentTask.setAt;
-            const elapsedMinutes = elapsedMs / (1000 * 60);
-
-            if (elapsedMinutes < 5) {
-                this.showTaskSwitchLocked();
-            }
-        }
-    }
 
     renderCurrentTaskBanner() {
         let banner = document.getElementById('current-task-banner');
@@ -737,19 +720,6 @@ class TunnlPopup {
 
     async setCurrentTaskByIndex(index) {
         try {
-            // Check if there's a 5-minute lock since last task switch
-            if (this.settings.currentTask && this.settings.currentTask.setAt) {
-                const elapsedMs = Date.now() - this.settings.currentTask.setAt;
-                const elapsedMinutes = elapsedMs / (1000 * 60);
-
-                if (elapsedMinutes < 5) {
-                    const remainingMinutes = Math.ceil(5 - elapsedMinutes);
-                    this.showMessage(`⏰ Task switching locked for ${remainingMinutes} more minutes.`, 'warning');
-                    this.showTaskSwitchLocked();
-                    return;
-                }
-            }
-
             const response = await this.sendMessageWithRetry({
                 type: 'SET_CURRENT_TASK',
                 index
@@ -771,19 +741,6 @@ class TunnlPopup {
 
     async setCurrentTask(taskText) {
         try {
-            // Check if there's a 5-minute lock since last task switch
-            if (this.settings.currentTask && this.settings.currentTask.setAt) {
-                const elapsedMs = Date.now() - this.settings.currentTask.setAt;
-                const elapsedMinutes = elapsedMs / (1000 * 60);
-
-                if (elapsedMinutes < 5) {
-                    const remainingMinutes = Math.ceil(5 - elapsedMinutes);
-                    this.showMessage(`⏰ Task switching locked for ${remainingMinutes} more minutes.`, 'warning');
-                    this.showTaskSwitchLocked();
-                    return;
-                }
-            }
-
             const taskIndex = this.settings.tasks.findIndex(task => (task.text || task) === taskText);
             const response = await this.sendMessageWithRetry({
                 type: 'SET_CURRENT_TASK',
@@ -809,114 +766,6 @@ class TunnlPopup {
         }
     }
 
-    showTaskSwitchLocked() {
-        // Create or update the lock display
-        let lockDisplay = document.getElementById('task-switch-lock');
-        if (!lockDisplay) {
-            lockDisplay = document.createElement('div');
-            lockDisplay.id = 'task-switch-lock';
-            lockDisplay.className = 'task-switch-lock';
-            document.body.appendChild(lockDisplay);
-        }
-
-        // Update the display with current remaining time
-        this.updateTaskSwitchLockDisplay();
-
-        // Show the lock display
-        lockDisplay.style.display = 'block';
-
-        // Start pulsing animation
-        lockDisplay.classList.add('pulsing');
-
-        // Auto-hide after 4 seconds
-        if (this.lockHideTimeout) {
-            clearTimeout(this.lockHideTimeout);
-        }
-        this.lockHideTimeout = setTimeout(() => {
-            this.hideTaskSwitchLocked();
-        }, 4000);
-
-        // Update every second while visible
-        if (this.lockUpdateInterval) {
-            clearInterval(this.lockUpdateInterval);
-        }
-        this.lockUpdateInterval = setInterval(() => {
-            this.updateTaskSwitchLockDisplay();
-        }, 1000);
-    }
-
-    updateTaskSwitchLockDisplay() {
-        const lockDisplay = document.getElementById('task-switch-lock');
-        if (!lockDisplay || !this.settings.currentTask || !this.settings.currentTask.setAt) {
-            return;
-        }
-
-        const elapsedMs = Date.now() - this.settings.currentTask.setAt;
-        const elapsedMinutes = elapsedMs / (1000 * 60);
-
-        if (elapsedMinutes >= 5) {
-            // Lock period is over
-            this.hideTaskSwitchLocked();
-            return;
-        }
-
-        const remainingMinutes = Math.ceil(5 - elapsedMinutes);
-        const remainingSeconds = Math.ceil((5 * 60) - (elapsedMs / 1000));
-
-        lockDisplay.innerHTML = `
-            <div class="lock-content">
-                <div class="lock-icon">🔒</div>
-                <div class="lock-text">Task switching locked</div>
-                <div class="lock-timer">${remainingMinutes}:${(remainingSeconds % 60).toString().padStart(2, '0')}</div>
-                <div class="lock-subtext">You can still complete or delete tasks</div>
-            </div>
-        `;
-    }
-
-    hideTaskSwitchLocked() {
-        const lockDisplay = document.getElementById('task-switch-lock');
-        if (lockDisplay) {
-            // Add fade-out animation
-            lockDisplay.classList.remove('pulsing');
-            lockDisplay.classList.add('fade-out');
-
-            // Hide after animation completes
-            setTimeout(() => {
-                lockDisplay.style.display = 'none';
-                lockDisplay.classList.remove('fade-out');
-            }, 500);
-        }
-
-        if (this.lockUpdateInterval) {
-            clearInterval(this.lockUpdateInterval);
-            this.lockUpdateInterval = null;
-        }
-
-        if (this.lockHideTimeout) {
-            clearTimeout(this.lockHideTimeout);
-            this.lockHideTimeout = null;
-        }
-    }
-
-    resetTaskSwitchLock() {
-        // Clear any existing timers
-        if (this.lockUpdateInterval) {
-            clearInterval(this.lockUpdateInterval);
-            this.lockUpdateInterval = null;
-        }
-
-        if (this.lockHideTimeout) {
-            clearTimeout(this.lockHideTimeout);
-            this.lockHideTimeout = null;
-        }
-
-        // Hide the lock display since there's no current task to protect
-        const lockDisplay = document.getElementById('task-switch-lock');
-        if (lockDisplay) {
-            lockDisplay.style.display = 'none';
-            lockDisplay.classList.remove('pulsing', 'fade-out');
-        }
-    }
 
     animateTaskSelection(taskText) {
         // Find the task element that's becoming current
@@ -940,8 +789,6 @@ class TunnlPopup {
             const response = await this.sendMessageWithRetry({ type: 'CLEAR_CURRENT_TASK' }, 5, 200);
             if (response?.success) {
                 this.settings.currentTask = null;
-                // Reset the task switch lock timer since current task is cleared
-                this.resetTaskSwitchLock();
                 if (!silent) this.showMessage('Cleared current task.', 'success');
                 this.updateUI();
             } else if (!silent) {
@@ -1092,8 +939,6 @@ class TunnlPopup {
                     await this.sendMessageWithRetry({
                         type: 'CLEAR_CURRENT_TASK'
                     });
-                    // Reset the task switch lock timer since current task is deleted
-                    this.resetTaskSwitchLock();
                 }
 
                 // Save settings
@@ -1129,12 +974,10 @@ class TunnlPopup {
                     this.settings.tasks[taskIndex].completedAt = Date.now();
                 }
 
-                // If this was the current task, clear it (this works even if task is locked)
+                // If this was the current task, clear it
                 const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
                 if (currentTaskText === taskText) {
                     this.settings.currentTask = null;
-                    // Reset the task switch lock timer since current task is completed
-                    this.resetTaskSwitchLock();
                     // Also clear it in the background script
                     await this.sendMessageWithRetry({
                         type: 'CLEAR_CURRENT_TASK'

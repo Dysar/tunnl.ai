@@ -503,11 +503,6 @@ class TunnlBackground {
             extensionEnabled: this.settings.extensionEnabled
         });
 
-        if (!this.settings.extensionEnabled) {
-            console.log('⏸️ Extension disabled, skipping analysis');
-            return;
-        }
-
         // Skip chrome://, devtools:// and extension URLs
         if (details.url.startsWith('chrome://') || details.url.startsWith('chrome-extension://') || details.url.startsWith('devtools://')) {
             console.log('🔒 Skipping system URL:', details.url);
@@ -559,6 +554,7 @@ class TunnlBackground {
             }
         } catch { }
 
+        // Always analyze URLs for data collection, but only block when extension is enabled
         await this.analyzeAndBlockUrl(details.url, details.tabId);
     }
 
@@ -597,7 +593,7 @@ class TunnlBackground {
                 });
                 
                 // Check cache first
-                if (cachedResult.shouldBlock) {
+                if (cachedResult.shouldBlock && this.settings.extensionEnabled) {
                     const analysis = {
                         shouldBlock: true,
                         reason: "From Cache: " + (cachedResult.reason || 'Potentially distracting'),
@@ -605,6 +601,8 @@ class TunnlBackground {
                         confidence: cachedResult.confidence || 0.8
                     };
                     await this.notifyBlockSuggestion(url, analysis, tabId);
+                } else if (cachedResult.shouldBlock && !this.settings.extensionEnabled) {
+                    console.log('📊 Cached result shows URL would be blocked but extension is disabled - data collected only');
                 }
                 return;
             }
@@ -630,9 +628,11 @@ class TunnlBackground {
             }
             console.log('📊 Stats updated - analyzed count:', this.statsManager?.getStats().urlsAnalyzedToday || 0);
 
-            if (analysis.shouldBlock) {
+            if (analysis.shouldBlock && this.settings.extensionEnabled) {
                 console.log('🚫 URL should be blocked, showing notification...');
                 await this.notifyBlockSuggestion(url, analysis, tabId);
+            } else if (analysis.shouldBlock && !this.settings.extensionEnabled) {
+                console.log('📊 URL would be blocked but extension is disabled - data collected only');
             } else {
                 console.log('✅ URL allowed, no action needed');
             }

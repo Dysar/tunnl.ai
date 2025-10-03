@@ -217,7 +217,7 @@ class TunnlContent {
                     width: 100vw !important;
                     height: 100vh !important;
                     z-index: 2147483647 !important;
-                    font-family: 'Excalifont', 'Kalam', cursive, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    font-family: 'Excalifont', 'Times New Roman', 'Georgia', 'Times', serif !important;
                     display: block !important;
                 }
 
@@ -227,189 +227,271 @@ class TunnlContent {
                     left: 0;
                     width: 100vw;
                     height: 100vh;
-                    background: rgba(0, 0, 0, 0.7);
+                    background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.6) 100%);
+                    backdrop-filter: blur(8px);
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     padding: 20px;
                     box-sizing: border-box;
+                    animation: overlayFadeIn 0.4s ease-out;
+                }
+
+                @keyframes overlayFadeIn {
+                    from { opacity: 0; backdrop-filter: blur(0px); }
+                    to { opacity: 1; backdrop-filter: blur(8px); }
                 }
 
                 .tunnl-modal-content {
-                    background: #67513a;
-                    border: 8px solid #67513a;
-                    border-radius: 20px;
-                    padding: 25px;
-                    max-width: 520px;
+                    background: linear-gradient(145deg, #67513a 0%, #5a4530 50%, #67513a 100%);
+                    border: 6px solid #8b7355;
+                    border-radius: 24px;
+                    padding: 32px;
+                    max-width: 580px;
                     width: 100%;
                     text-align: center;
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.1);
-                    animation: modalSlideIn 0.3s ease-out;
+                    box-shadow: 
+                        0 25px 50px rgba(0, 0, 0, 0.7),
+                        0 0 0 1px rgba(255, 255, 255, 0.1),
+                        inset 0 2px 4px rgba(255, 255, 255, 0.15),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+                    animation: modalSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
                     position: relative;
-                    margin-top: 160px; /* Even more space to prevent overlap */
+                    margin-top: 120px;
+                    overflow: visible;
+                }
+
+                .tunnl-modal-content::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 2px;
+                    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
                 }
 
                 @keyframes modalSlideIn {
                     from {
                         opacity: 0;
-                        transform: scale(0.9) translateY(-20px);
+                        transform: scale(0.8) translateY(-30px) rotateX(10deg);
                     }
                     to {
                         opacity: 1;
-                        transform: scale(1) translateY(0);
+                        transform: scale(1) translateY(0) rotateX(0deg);
                     }
                 }
 
                 .tunnl-image-container {
                     position: absolute;
-                    top: -220px; /* Position even higher to prevent overlap with modal content */
+                    top: -180px;
                     left: 50%;
                     transform: translateX(-50%);
                     z-index: 10;
+                    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
                 }
 
                 .tunnl-access-denied-banner {
-                    width: 280px; /* Bigger image */
+                    width: 300px;
                     height: auto;
                     display: block;
-                    border-radius: 8px;
-                    /* Removed box-shadow */
+                    border-radius: 12px;
+                    transition: transform 0.3s ease;
                 }
 
-                .tunnl-beaver-container {
-                    margin: 20px 0;
-                    padding: 15px;
-                    background: #eaddd7;
-                    border: 4px solid #67513a;
-                    border-radius: 15px;
-                    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-                }
-
-                .tunnl-beaver-illustration {
-                    width: 100%;
-                    max-width: 300px;
-                    height: auto;
-                    display: block;
-                    margin: 0 auto;
+                .tunnl-access-denied-banner:hover {
+                    transform: scale(1.02);
                 }
 
                 .tunnl-explanation-box {
-                    background: #79804d;
-                    border: 4px solid #67513a;
-                    border-radius: 15px;
-                    padding: 18px 20px;
-                    margin: 15px 0;
-                    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.2);
+                    background: linear-gradient(145deg, #79804d 0%, #6a7342 50%, #79804d 100%);
+                    border: 4px solid #8b9a5a;
+                    border-radius: 20px;
+                    padding: 24px 28px;
+                    margin: 20px 0;
+                    box-shadow: 
+                        inset 0 3px 6px rgba(0, 0, 0, 0.25),
+                        0 4px 8px rgba(0, 0, 0, 0.2);
                     position: relative;
+                    overflow: hidden;
+                }
+
+                .tunnl-explanation-box::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    height: 1px;
+                    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
                 }
 
                 .tunnl-explanation-text {
                     color: #f8f1ee;
-                    font-size: 18px;
-                    line-height: 1.5;
+                    font-size: 19px;
+                    line-height: 1.6;
                     margin: 0;
                     font-weight: 400;
                     text-align: left;
+                    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+                    letter-spacing: 0.3px;
                 }
 
                 .tunnl-action-buttons {
                     display: flex;
-                    gap: 20px;
+                    gap: 24px;
                     justify-content: center;
-                    margin: 20px 0 15px 0;
+                    margin: 28px 0 20px 0;
                     flex-wrap: wrap;
                 }
 
                 .tunnl-btn {
-                    padding: 18px 28px;
-                    border-radius: 12px;
-                    font-size: 16px;
-                    font-weight: 400;
+                    padding: 20px 32px;
+                    border-radius: 16px;
+                    font-size: 17px;
+                    font-weight: 500;
                     cursor: pointer;
-                    transition: all 0.3s ease;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     border: 3px solid;
                     font-family: inherit;
-                    min-width: 160px;
-                    min-height: 56px;
+                    min-width: 180px;
+                    min-height: 60px;
                     text-transform: none;
-                    letter-spacing: 0.5px;
+                    letter-spacing: 0.8px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     line-height: 1.2;
+                    position: relative;
+                    overflow: hidden;
+                    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+                }
+
+                .tunnl-btn::before {
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: -100%;
+                    width: 100%;
+                    height: 100%;
+                    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+                    transition: left 0.5s ease;
+                }
+
+                .tunnl-btn:hover::before {
+                    left: 100%;
                 }
 
                 .tunnl-btn:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                    transform: translateY(-3px) scale(1.02);
+                    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+                }
+
+                .tunnl-btn:active {
+                    transform: translateY(-1px) scale(0.98);
+                    transition: all 0.1s ease;
                 }
 
                 .tunnl-btn-secondary {
-                    background: #eaddd7 !important;
-                    border-color: #67513a !important;
+                    background: linear-gradient(145deg, #eaddd7 0%, #d4c4b8 50%, #eaddd7 100%) !important;
+                    border-color: #8b7355 !important;
                     color: #2C1810 !important;
+                    box-shadow: 
+                        0 4px 12px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 2px rgba(255, 255, 255, 0.3);
                 }
 
                 .tunnl-btn-secondary:hover {
-                    background: #d2bab0 !important;
-                    border-color: #67513a !important;
+                    background: linear-gradient(145deg, #d2bab0 0%, #c4a89c 50%, #d2bab0 100%) !important;
+                    border-color: #8b7355 !important;
                     color: #2C1810 !important;
                 }
 
                 .tunnl-btn-primary {
-                    background: #eaddd7 !important;
-                    border-color: #67513a !important;
+                    background: linear-gradient(145deg, #eaddd7 0%, #d4c4b8 50%, #eaddd7 100%) !important;
+                    border-color: #8b7355 !important;
                     color: #2C1810 !important;
+                    box-shadow: 
+                        0 4px 12px rgba(0, 0, 0, 0.2),
+                        inset 0 1px 2px rgba(255, 255, 255, 0.3);
                 }
 
                 .tunnl-btn-primary:hover {
-                    background: #d2bab0 !important;
-                    border-color: #67513a !important;
+                    background: linear-gradient(145deg, #d2bab0 0%, #c4a89c 50%, #d2bab0 100%) !important;
+                    border-color: #8b7355 !important;
                     color: #2C1810 !important;
                 }
 
                 .tunnl-bypass-link {
-                    margin: 15px 0 0 0;
+                    margin: 20px 0 0 0;
                 }
 
                 .tunnl-bypass-link a {
                     color: #f8f1ee;
-                    text-decoration: underline;
+                    text-decoration: none;
                     font-size: 16px;
                     font-weight: 400;
-                    letter-spacing: 0.3px;
-                    transition: all 0.2s ease;
+                    letter-spacing: 0.5px;
+                    transition: all 0.3s ease;
+                    position: relative;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                }
+
+                .tunnl-bypass-link a::after {
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 50%;
+                    width: 0;
+                    height: 2px;
+                    background: #eaddd7;
+                    transition: all 0.3s ease;
+                    transform: translateX(-50%);
                 }
 
                 .tunnl-bypass-link a:hover {
                     color: #eaddd7;
-                    text-decoration-thickness: 2px;
+                    background: rgba(255, 255, 255, 0.1);
+                    transform: translateY(-1px);
+                }
+
+                .tunnl-bypass-link a:hover::after {
+                    width: 80%;
                 }
 
                 /* Responsive adjustments */
                 @media (max-width: 420px) {
                     .tunnl-modal-content {
-                        padding: 20px;
-                        margin-top: 180px; /* More space for higher positioned image on mobile */
+                        padding: 24px;
+                        margin-top: 140px;
+                        max-width: 90vw;
                     }
                     .tunnl-image-container {
-                        top: -200px; /* Adjust for higher positioned image on smaller screens */
+                        top: -160px;
                     }
                     .tunnl-access-denied-banner {
-                        width: 200px; /* Bigger image on mobile too */
+                        width: 220px;
                     }
                     .tunnl-action-buttons {
                         flex-direction: column;
                         align-items: center;
+                        gap: 16px;
                     }
                     .tunnl-btn {
                         width: 100%;
-                        max-width: 200px;
+                        max-width: 240px;
+                        min-width: auto;
+                    }
+                    .tunnl-explanation-text {
+                        font-size: 17px;
                     }
                 }
             `;
 
-            // Add Excalifont with higher specificity
+            // Add Excalifont with proper loading
             const fontStyle = document.createElement('style');
             fontStyle.setAttribute('data-tunnl', 'font-styles');
             fontStyle.setAttribute('data-timestamp', Date.now());
@@ -420,7 +502,7 @@ class TunnlContent {
                     src: url('${chrome.runtime.getURL('Excalifont Regular.woff2')}') format('woff2');
                     font-weight: normal;
                     font-style: normal;
-                    font-display: block;
+                    font-display: swap;
                 }
                 
                 #tunnl-block-modal,
@@ -432,106 +514,19 @@ class TunnlContent {
                 }
             `;
             document.head.appendChild(fontStyle);
-            
-            // Try multiple font loading approaches
-            const fontUrl = chrome.runtime.getURL('Excalifont Regular.woff2');
-            console.log('🔍 Loading Excalifont from URL:', fontUrl);
-            
-            // Test if font URL is accessible
-            fetch(fontUrl, { method: 'HEAD' })
-                .then(response => {
-                    console.log('🔍 Font URL accessibility test:', response.status, response.statusText);
-                    if (!response.ok) {
-                        console.error('❌ Font URL not accessible:', response.status);
-                        // Skip font loading and use fallback
-                        this.createModalWithFallbackFont(modal, blockedUrl);
-                        return;
-                    }
-                })
-                .catch(error => {
-                    console.error('❌ Font URL fetch error:', error);
-                    console.log('🔍 Trying alternative font loading method...');
-                    // Skip font loading and use fallback
-                    this.createModalWithFallbackFont(modal, blockedUrl);
-                    return;
-                });
-            
-            // Try CSS-only font loading (more reliable)
-            console.log('🎨 Attempting CSS-only font loading...');
-            
-            // Create modal immediately with CSS font-face
-            document.body.appendChild(modal);
-            
-            // Wait a bit for CSS font to load, then check if it's available
-            setTimeout(() => {
-                const testElement = document.createElement('span');
-                testElement.style.fontFamily = 'Excalifont';
-                testElement.style.fontSize = '16px';
-                testElement.textContent = 'Test';
-                testElement.style.visibility = 'hidden';
-                testElement.style.position = 'absolute';
-                document.body.appendChild(testElement);
-                
-                const computedStyle = window.getComputedStyle(testElement);
-                const fontFamily = computedStyle.fontFamily;
-                
-                document.body.removeChild(testElement);
-                
-                if (fontFamily.includes('Excalifont')) {
-                    console.log('✅ Excalifont loaded via CSS successfully');
-                    this.setupModalEventListeners(modal, blockedUrl);
-                } else {
-                    console.log('❌ Excalifont not loaded via CSS, using fallback');
-                    // Apply fallback font
-                    const textElements = modal.querySelectorAll('*');
-                    textElements.forEach(el => {
-                        el.style.fontFamily = 'Times New Roman, Georgia, Times, serif';
-                    });
-                    this.setupModalEventListeners(modal, blockedUrl);
-                }
-            }, 100);
-
             document.head.appendChild(style);
+            
+            // Create modal and set up event listeners immediately
+            document.body.appendChild(modal);
+            this.setupModalEventListeners(modal, blockedUrl);
+            
+            console.log('✅ Modal created with Excalifont font loading');
 
         } catch (error) {
             console.log('❌ Failed to create modal (likely CSP blocking):', error.message);
         }
     }
 
-    createModalWithFont(modal, blockedUrl) {
-        console.log('🎨 Creating modal with Excalifont loaded');
-        document.body.appendChild(modal);
-        
-        // Force font application
-        const textElements = modal.querySelectorAll('*');
-        textElements.forEach(el => {
-            el.style.fontFamily = 'Excalifont, Kalam, cursive, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
-            el.style.fontDisplay = 'block';
-        });
-        
-        // Force reflow
-        modal.offsetHeight;
-        
-        this.setupModalEventListeners(modal, blockedUrl);
-        console.log('✅ Modal created with Excalifont');
-    }
-
-    createModalWithFallbackFont(modal, blockedUrl) {
-        console.log('🎨 Creating modal with fallback font');
-        
-        // Add fallback font styles
-        const fallbackStyle = document.createElement('style');
-        fallbackStyle.textContent = `
-            #tunnl-block-modal * {
-                font-family: 'Times New Roman', 'Georgia', 'Times', serif !important;
-            }
-        `;
-        document.head.appendChild(fallbackStyle);
-        
-        document.body.appendChild(modal);
-        this.setupModalEventListeners(modal, blockedUrl);
-        console.log('✅ Modal created with fallback font');
-    }
 
     setupModalEventListeners(modal, blockedUrl) {
         // Go back button

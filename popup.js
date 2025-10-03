@@ -1265,7 +1265,7 @@ class TunnlPopup {
     }
 
     // Category selection functionality
-    toggleCategory(categoryName) {
+    async toggleCategory(categoryName) {
         const button = document.querySelector(`[data-category="${categoryName}"]`);
         if (!button) return;
 
@@ -1281,8 +1281,12 @@ class TunnlPopup {
             this.settings.selectedCategories.push(categoryName);
         }
 
-        this.saveSettings();
+        await this.saveSettings();
         console.log('Selected categories:', this.settings.selectedCategories);
+        
+        // Show feedback to user
+        const action = isSelected ? 'removed from' : 'added to';
+        this.showMessage(`Category "${categoryName}" ${action} blocked categories`, 'success');
     }
 
     // Update category buttons based on settings

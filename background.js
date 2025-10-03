@@ -80,7 +80,9 @@ class TunnlBackground {
                 'blockedSites',
                 'stats',
                 'allowlist',
-                'taskValidationEnabled'
+                'taskValidationEnabled',
+                'selectedCategories',
+                'useCategories'
             ]);
             
             // If no data in local, try sync storage
@@ -94,7 +96,9 @@ class TunnlBackground {
                     'blockedSites',
                     'stats',
                     'allowlist',
-                    'taskValidationEnabled'
+                    'taskValidationEnabled',
+                    'selectedCategories',
+                    'useCategories'
                 ]);
                 
                 // Migrate from sync to local if we found data
@@ -118,7 +122,7 @@ class TunnlBackground {
             stats: result.stats || { blockedCount: 0, analyzedCount: 0 },
             allowlist: Array.isArray(result.allowlist) ? result.allowlist : [],
             taskValidationEnabled: result.taskValidationEnabled !== false,
-            selectedCategories: result.selectedCategories || [],
+            selectedCategories: Array.isArray(result.selectedCategories) ? result.selectedCategories : [],
             useCategories: result.useCategories || false
         };
     }
@@ -711,6 +715,13 @@ class TunnlBackground {
                 console.log('⚠️ No categories selected - allowing URL to avoid overblocking');
                 return { shouldBlock: false, reason: 'No categories selected', activityUnderstanding: 'No categories selected', confidence: 0.5 };
             }
+            
+            // Quick category check before AI analysis
+            const quickCategoryCheck = this.quickCategoryCheck(url, this.settings.selectedCategories);
+            if (quickCategoryCheck.shouldBlock) {
+                console.log('🚫 Quick category check: URL should be blocked', quickCategoryCheck);
+                return quickCategoryCheck;
+            }
         } else {
             const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
             const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
@@ -1107,6 +1118,84 @@ class TunnlBackground {
             deletedEntries: deletedCount,
             remainingEntries: this.urlCache.size
         });
+    }
+
+    // Quick category check using domain patterns
+    quickCategoryCheck(url, selectedCategories) {
+        try {
+            const lowerUrl = url.toLowerCase();
+            const hostname = new URL(url).hostname.toLowerCase();
+            
+            // Define category patterns
+            const categoryPatterns = {
+                'gambling': [
+                    'bet', 'casino', 'poker', 'lottery', 'bingo', 'slots', 'roulette', 'blackjack',
+                    'sportsbook', 'betting', 'wager', 'gambling', 'pokerstars', '888', 'bet365',
+                    'unibet', 'william hill', 'ladbrokes', 'paddy power'
+                ],
+                'nsfw': [
+                    'porn', 'xxx', 'adult', 'sex', 'nude', 'naked', 'fetish', 'bdsm', 'escort',
+                    'cam', 'webcam', 'livejasmin', 'chaturbate', 'onlyfans', 'xvideos', 'pornhub',
+                    'redtube', 'youporn', 'xhamster'
+                ],
+                'social-media': [
+                    'facebook.com', 'twitter.com', 'instagram.com', 'tiktok.com', 'linkedin.com',
+                    'snapchat.com', 'reddit.com', 'discord.com', 'telegram.org', 'whatsapp.com',
+                    'youtube.com', 'twitch.tv', 'pinterest.com', 'tumblr.com', 'flickr.com',
+                    'myspace.com', 'bebo.com', 'hi5.com', 'orkut.com'
+                ],
+                'news': [
+                    'cnn.com', 'bbc.com', 'nytimes.com', 'washingtonpost.com', 'guardian.com',
+                    'reuters.com', 'bloomberg.com', 'wsj.com', 'forbes.com', 'huffpost.com',
+                    'buzzfeed.com', 'vice.com', 'vox.com', 'theatlantic.com', 'newyorker.com',
+                    'news', 'breaking', 'headlines', 'politics', 'celebrity'
+                ],
+                'gaming': [
+                    'steam', 'epicgames', 'origin', 'uplay', 'battle.net', 'twitch.tv',
+                    'youtube.com/gaming', 'gaming', 'game', 'playstation', 'xbox', 'nintendo',
+                    'roblox', 'minecraft', 'fortnite', 'league of legends', 'dota', 'csgo',
+                    'valorant', 'overwatch', 'world of warcraft', 'final fantasy'
+                ],
+                'music': [
+                    'spotify.com', 'apple.com/music', 'youtube.com/music', 'soundcloud.com',
+                    'pandora.com', 'last.fm', 'bandcamp.com', 'tidal.com', 'deezer.com',
+                    'music', 'song', 'album', 'concert', 'ticketmaster', 'stubhub'
+                ],
+                'shopping': [
+                    'amazon.com', 'ebay.com', 'etsy.com', 'shopify', 'walmart.com', 'target.com',
+                    'bestbuy.com', 'newegg.com', 'aliexpress.com', 'wish.com', 'overstock.com',
+                    'shop', 'store', 'buy', 'purchase', 'cart', 'checkout', 'deal', 'sale',
+                    'discount', 'coupon', 'price', 'compare'
+                ],
+                'travel': [
+                    'booking.com', 'expedia.com', 'hotels.com', 'airbnb.com', 'vrbo.com',
+                    'tripadvisor.com', 'kayak.com', 'priceline.com', 'orbitz.com', 'travelocity.com',
+                    'travel', 'hotel', 'flight', 'vacation', 'trip', 'resort', 'cruise',
+                    'airline', 'rental car', 'airport', 'destination'
+                ]
+            };
+            
+            // Check each selected category
+            for (const category of selectedCategories) {
+                const patterns = categoryPatterns[category] || [];
+                for (const pattern of patterns) {
+                    if (hostname.includes(pattern) || lowerUrl.includes(pattern)) {
+                        return {
+                            shouldBlock: true,
+                            reason: `Matches ${category} category (${pattern})`,
+                            activityUnderstanding: `This appears to be a ${category} website`,
+                            confidence: 0.9
+                        };
+                    }
+                }
+            }
+            
+            return { shouldBlock: false, reason: 'No category match found', activityUnderstanding: 'No quick category match', confidence: 0.1 };
+            
+        } catch (error) {
+            console.error('Error in quick category check:', error);
+            return { shouldBlock: false, reason: 'Error in category check', activityUnderstanding: 'Category check failed', confidence: 0 };
+        }
     }
 
     // Allowlist: user-configured substrings plus core schemes

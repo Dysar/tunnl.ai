@@ -3,6 +3,7 @@
 // Import TaskValidator and StatisticsManager
 importScripts('task-validator.js');
 importScripts('statistics.js');
+importScripts('url-categories.js');
 
 class TunnlBackground {
     constructor() {
@@ -20,6 +21,10 @@ class TunnlBackground {
 
         this.taskValidator = null; // Will be initialized after settings are loaded
         this.statsManager = null; // Will be initialized after settings load
+        
+        // Known URL categories - loaded from external file
+        this.knownUrlCategories = KNOWN_URL_CATEGORIES;
+        
         this.init();
     }
 
@@ -716,6 +721,19 @@ class TunnlBackground {
                 return { shouldBlock: false, reason: 'No categories selected', activityUnderstanding: 'No categories selected', confidence: 0.5 };
             }
             
+            // First check known URL categories (fastest)
+            const knownCategory = this.getKnownUrlCategory(url);
+            if (knownCategory) {
+                console.log('🎯 Known URL category found:', knownCategory);
+                const shouldBlock = this.settings.selectedCategories.includes(knownCategory);
+                return {
+                    shouldBlock,
+                    reason: shouldBlock ? `Known ${knownCategory} site` : `Known ${knownCategory} site (not blocked)`,
+                    activityUnderstanding: `This is a known ${knownCategory} website`,
+                    confidence: 0.95
+                };
+            }
+            
             // Quick category check before AI analysis
             const quickCategoryCheck = this.quickCategoryCheck(url, this.settings.selectedCategories);
             if (quickCategoryCheck.shouldBlock) {
@@ -1118,6 +1136,17 @@ class TunnlBackground {
             deletedEntries: deletedCount,
             remainingEntries: this.urlCache.size
         });
+    }
+
+
+    // Check if URL has a known category
+    getKnownUrlCategory(url) {
+        try {
+            const hostname = new URL(url).hostname.toLowerCase();
+            return this.knownUrlCategories[hostname] || null;
+        } catch (error) {
+            return null;
+        }
     }
 
     // Quick category check using domain patterns

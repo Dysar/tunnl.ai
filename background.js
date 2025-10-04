@@ -25,6 +25,13 @@ class TunnlBackground {
         // Known URL categories - loaded from external file
         this.knownUrlCategories = KNOWN_URL_CATEGORIES;
         
+        // Content extraction settings
+        this.contentExtractionEnabled = true;
+        this.maxContentLength = 2000;
+        this.contentCache = new Map(); // Cache extracted content
+        this.extractionInProgress = new Set(); // Track URLs currently being extracted
+        this.navigationDebounce = new Map(); // Debounce navigation events
+        
         this.init();
     }
 
@@ -514,6 +521,22 @@ class TunnlBackground {
             return;
         }
 
+        // Debounce navigation events for the same URL (prevent multiple rapid events)
+        const now = Date.now();
+        const lastNavigation = this.navigationDebounce.get(details.url);
+        if (lastNavigation && (now - lastNavigation) < 1000) { // 1 second debounce
+            console.log('⏳ Debouncing navigation event for:', details.url);
+            return;
+        }
+        this.navigationDebounce.set(details.url, now);
+
+        // Clean up old debounce entries (older than 5 seconds)
+        for (const [url, timestamp] of this.navigationDebounce.entries()) {
+            if (now - timestamp > 5000) {
+                this.navigationDebounce.delete(url);
+            }
+        }
+
         // Track this URL for context
         this.addToRecentUrls(details.url);
 
@@ -612,9 +635,28 @@ class TunnlBackground {
                 return;
             }
 
+            // Extract content if enabled and not cached
+            let extractedContent = null;
+            if (this.contentExtractionEnabled) {
+                console.log('🔍 Attempting to extract content from URL:', url);
+                try {
+                    extractedContent = await this.extractContentFromUrl(url);
+                    if (extractedContent) {
+                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                        console.log('✅ Content extracted successfully (first 10 words):', `"${firstWords}..."`);
+                    } else {
+                        console.log('⚠️ Content extraction returned empty result');
+                    }
+                } catch (error) {
+                    console.warn('❌ Failed to extract content from URL:', url, error);
+                }
+            } else {
+                console.log('⏭️ Content extraction disabled, skipping for URL:', url);
+            }
+
             // Analyze URL with OpenAI
             console.log('🤖 Calling OpenAI API for analysis...');
-            const analysis = await this.analyzeUrl(url);
+            const analysis = await this.analyzeUrl(url, extractedContent);
             
             console.log('🧠 AI Analysis result:', {
                 shouldBlock: analysis.shouldBlock,
@@ -700,8 +742,11 @@ class TunnlBackground {
         return await this.taskValidator.validateTask(taskText);
     }
 
-    async analyzeUrl(url) {
+    async analyzeUrl(url, extractedContent = null) {
         console.log('🔍 Analyzing URL:', url);
+        if (extractedContent) {
+            console.log('📄 Using extracted content for analysis, length:', extractedContent.length);
+        }
         
         if (!this.settings.openaiApiKey) {
             console.log('❌ Extension not configured - API key missing');
@@ -724,7 +769,8 @@ class TunnlBackground {
             // First check known URL categories (fastest)
             const knownCategory = this.getKnownUrlCategory(url);
             if (knownCategory) {
-                console.log('🎯 Known URL category found:', knownCategory);
+                const categoryDesc = this.getCategoryDescription(knownCategory);
+                console.log('🎯 Known URL category found:', knownCategory, categoryDesc ? `(${categoryDesc.name})` : '');
                 const shouldBlock = this.settings.selectedCategories.includes(knownCategory);
                 return {
                     shouldBlock,
@@ -774,16 +820,48 @@ class TunnlBackground {
                 // Prepare system prompt based on mode
                 let systemPrompt;
                 if (this.settings.useCategories) {
+                    // Build category descriptions for selected categories
+                    const selectedCategoryDescriptions = this.settings.selectedCategories
+                        .map(category => {
+                            const desc = CATEGORY_DESCRIPTIONS[category];
+                            return desc ? `- "${category}" (${desc.name}): ${desc.description}` : `- "${category}": No description available`;
+                        })
+                        .join('\n');
+
+                    console.log('📋 Sending category descriptions to LLM for categories:', this.settings.selectedCategories);
+
+                    // Build content section for prompt
+                    const contentSection = extractedContent 
+                        ? `\n\nWebsite content (extracted for analysis):\n${extractedContent}`
+                        : '';
+
+                    // Log content being sent to LLM (first 10 words for debugging)
+                    if (extractedContent) {
+                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                        console.log('📄 Sending website content to LLM (first 10 words):', `"${firstWords}..."`);
+                        console.log('📊 Content stats:', {
+                            totalLength: extractedContent.length,
+                            hasTitle: extractedContent.includes('Title:'),
+                            hasDescription: extractedContent.includes('Description:'),
+                            hasContent: extractedContent.includes('Content:')
+                        });
+                    } else {
+                        console.log('⚠️ No website content available for LLM analysis');
+                    }
+
                     systemPrompt = `
                     You are a productivity assistant that helps users stay focused by blocking distracting websites based on selected categories.
                     Analyze the given URL and determine if it belongs to any of the selected categories that should be blocked.
 
                     Selected categories to block: ${this.settings.selectedCategories.join(', ')}
 
+                    Category definitions for selected categories:
+                    ${selectedCategoryDescriptions}
+
                     Recent browsing context (last 5 URLs visited):
                     ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
 
-                    Current URL to analyze: ${url}
+                    Current URL to analyze: ${url}${contentSection}
 
                     Respond with a JSON object containing:
                     - "shouldBlock": boolean (true if the URL belongs to any of the selected categories)
@@ -791,19 +869,11 @@ class TunnlBackground {
                     - "activityUnderstanding": string (brief explanation of what type of content this URL provides)
                     - "confidence": number (0-1, how confident you are in this decision)
 
-                    Category definitions:
-                    - "gambling": Online casinos, betting sites, poker, sports betting, lottery sites
-                    - "nsfw": Adult content, pornography, explicit material
-                    - "social-media": Facebook, Twitter, Instagram, TikTok, LinkedIn, Snapchat, Reddit, Discord
-                    - "news": News websites, current events, political news, celebrity news
-                    - "gaming": Gaming websites, game stores, gaming forums, streaming platforms for games
-                    - "music": Music streaming, music videos, music news, concert tickets
-                    - "shopping": E-commerce sites, online stores, deal sites, auction sites
-                    - "travel": Travel booking, vacation planning, hotel booking, flight booking
-
                     Guidelines:
                     - Be precise in category matching - only block if the URL clearly belongs to the selected categories
                     - Consider the main purpose of the website, not just incidental content
+                    - Use the detailed category descriptions above to make accurate decisions
+                    - If website content is provided, use it to better understand the page's purpose and content
                     - Always allow: search engines, productivity tools, educational sites, work-related sites
                     - If unsure about category match, lean towards allowing (productivity over restriction)
                     - Do not block localhost, intranet, or internal company URLs
@@ -811,6 +881,25 @@ class TunnlBackground {
                 } else {
                     const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
                     const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
+                    // Build content section for task-based analysis
+                    const contentSection = extractedContent 
+                        ? `\n\nWebsite content (extracted for analysis):\n${extractedContent}`
+                        : '';
+
+                    // Log content being sent to LLM (first 10 words for debugging)
+                    if (extractedContent) {
+                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                        console.log('📄 Sending website content to LLM for task analysis (first 10 words):', `"${firstWords}..."`);
+                        console.log('📊 Content stats:', {
+                            totalLength: extractedContent.length,
+                            hasTitle: extractedContent.includes('Title:'),
+                            hasDescription: extractedContent.includes('Description:'),
+                            hasContent: extractedContent.includes('Content:')
+                        });
+                    } else {
+                        console.log('⚠️ No website content available for task-based LLM analysis');
+                    }
+
                     systemPrompt = `
                     You are a productivity assistant that helps users stay focused on their tasks. 
                     Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
@@ -820,7 +909,7 @@ class TunnlBackground {
                     Recent browsing context (last 5 URLs visited):
                     ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
 
-                    Current URL to analyze: ${url}
+                    Current URL to analyze: ${url}${contentSection}
 
                     Respond with a JSON object containing:
                     - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
@@ -832,6 +921,7 @@ class TunnlBackground {
                     - Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
                     - Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
                     - Use the recent browsing context to understand the user's workflow and intent
+                    - If website content is provided, use it to better understand the page's purpose and relevance to the task
                     - Consider browsing patterns: if user is researching a topic, allow related sites even if not directly mentioned in task
                     - Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
                     - Examples of task-relevant platforms:
@@ -1146,6 +1236,207 @@ class TunnlBackground {
             return this.knownUrlCategories[hostname] || null;
         } catch (error) {
             return null;
+        }
+    }
+
+    // Get category description for debugging/logging
+    getCategoryDescription(category) {
+        return CATEGORY_DESCRIPTIONS[category] || null;
+    }
+
+    // Extract content from a URL using direct fetch (no tabs needed)
+    async extractContentFromUrl(url) {
+        try {
+            // Check if content is already cached
+            if (this.contentCache.has(url)) {
+                const cached = this.contentCache.get(url);
+                if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) { // 24 hours
+                    console.log('📄 Using cached content for:', url);
+                    return cached.content;
+                }
+            }
+
+            // Check if URL is suitable for content extraction
+            if (!this.isExtractableUrl(url)) {
+                console.log('⚠️ URL not suitable for content extraction:', url);
+                return null;
+            }
+
+            // Check if extraction is already in progress for this URL
+            if (this.extractionInProgress.has(url)) {
+                console.log('⏳ Content extraction already in progress for:', url);
+                // Wait for the ongoing extraction to complete
+                return new Promise((resolve) => {
+                    const checkInterval = setInterval(() => {
+                        const cached = this.contentCache.get(url);
+                        if (cached && (Date.now() - cached.timestamp) < 24 * 60 * 60 * 1000) {
+                            clearInterval(checkInterval);
+                            resolve(cached.content);
+                        }
+                    }, 100);
+                    
+                    // Timeout after 15 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve(null);
+                    }, 15000);
+                });
+            }
+
+            // Mark extraction as in progress
+            this.extractionInProgress.add(url);
+            console.log('🔍 Extracting content from:', url);
+
+            // Use fetch to get the HTML content directly (no tabs needed)
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                },
+                mode: 'cors'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const html = await response.text();
+            
+            // Extract text content from HTML
+            const content = this.extractTextFromHtml(html, url);
+
+            if (content) {
+                // Cache the content
+                this.contentCache.set(url, {
+                    content: content,
+                    timestamp: Date.now()
+                });
+
+                // Limit cache size
+                if (this.contentCache.size > 50) {
+                    const firstKey = this.contentCache.keys().next().value;
+                    this.contentCache.delete(firstKey);
+                }
+
+                console.log('✅ Content extracted successfully:', {
+                    url,
+                    contentLength: content.length
+                });
+
+                // Remove from in-progress set
+                this.extractionInProgress.delete(url);
+                return content;
+            }
+
+            // Remove from in-progress set
+            this.extractionInProgress.delete(url);
+            return null;
+
+        } catch (error) {
+            console.error('❌ Content extraction failed:', error);
+            // Remove from in-progress set
+            this.extractionInProgress.delete(url);
+            return null;
+        }
+    }
+
+    // Extract text content from HTML string
+    extractTextFromHtml(html, url) {
+        try {
+            // Create a temporary DOM parser (works in service worker)
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // Extract title
+            const title = doc.querySelector('title')?.textContent?.trim() || '';
+            
+            // Extract meta description
+            const metaDescription = doc.querySelector('meta[name="description"]')?.getAttribute('content')?.trim() || '';
+            
+            // Remove script and style elements
+            const scripts = doc.querySelectorAll('script, style, noscript');
+            scripts.forEach(el => el.remove());
+            
+            // Try to find main content areas
+            const mainContentSelectors = [
+                'main',
+                'article',
+                '[role="main"]',
+                '.content',
+                '.main-content',
+                '.post-content',
+                '.entry-content',
+                '#content',
+                '#main'
+            ];
+            
+            let mainContent = '';
+            for (const selector of mainContentSelectors) {
+                const element = doc.querySelector(selector);
+                if (element) {
+                    mainContent = element.textContent;
+                    break;
+                }
+            }
+            
+            // If no main content found, use body
+            if (!mainContent) {
+                const body = doc.querySelector('body');
+                if (body) {
+                    mainContent = body.textContent;
+                }
+            }
+            
+            // Clean and normalize text
+            const cleanText = mainContent
+                .replace(/\s+/g, ' ')
+                .replace(/\n+/g, ' ')
+                .trim();
+            
+            // Combine title, description, and content
+            let result = '';
+            if (title) result += `Title: ${title}\n\n`;
+            if (metaDescription) result += `Description: ${metaDescription}\n\n`;
+            if (cleanText) result += `Content: ${cleanText}`;
+            
+            // Limit to max length
+            if (result.length > this.maxContentLength) {
+                result = result.substring(0, this.maxContentLength) + '...';
+            }
+            
+            return result || null;
+            
+        } catch (error) {
+            console.error('❌ HTML parsing failed:', error);
+            return null;
+        }
+    }
+
+    // Check if URL is suitable for content extraction
+    isExtractableUrl(url) {
+        try {
+            const urlObj = new URL(url);
+            const protocol = urlObj.protocol;
+            const hostname = urlObj.hostname;
+            
+            // Only extract from HTTP/HTTPS
+            if (!['http:', 'https:'].includes(protocol)) {
+                return false;
+            }
+            
+            // Skip certain domains that might cause issues
+            const skipDomains = [
+                'localhost',
+                '127.0.0.1',
+                'chrome://',
+                'chrome-extension://',
+                'file://'
+            ];
+            
+            return !skipDomains.some(domain => hostname.includes(domain));
+            
+        } catch (error) {
+            return false;
         }
     }
 

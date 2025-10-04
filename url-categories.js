@@ -204,3 +204,39 @@ var KNOWN_URL_CATEGORIES = {
     'livejasmin.com': 'nsfw',
     'www.livejasmin.com': 'nsfw'
 };
+
+// Category descriptions for LLM analysis
+var CATEGORY_DESCRIPTIONS = {
+    'gambling': {
+        name: 'Gambling',
+        description: 'Online gambling, betting, and casino websites including sports betting, poker, casino games, lottery, bingo, slots, roulette, blackjack, and other games of chance where money can be won or lost. This includes both legal and illegal gambling sites, betting exchanges, and gambling-related forums or communities.'
+    },
+    'nsfw': {
+        name: 'Adult Content',
+        description: 'Adult content, pornography, explicit material, and sexually explicit websites including adult videos, images, live cams, dating sites focused on casual encounters, fetish content, BDSM material, and other adult-oriented content that may not be appropriate for all audiences.'
+    },
+    'social-media': {
+        name: 'Social Media',
+        description: 'Social networking platforms, social media sites, and community platforms where users can share content, connect with others, post updates, photos, videos, and engage in social interactions. This includes platforms like Facebook, Twitter, Instagram, TikTok, LinkedIn, Snapchat, Reddit, Discord, and similar social networking services.'
+    },
+    'news': {
+        name: 'News & Media',
+        description: 'News websites, current events, journalism, political news, celebrity news, and media outlets that provide information about recent events, politics, entertainment, sports news, and other current affairs. This includes both traditional news sources and digital media platforms that focus on news reporting and commentary.'
+    },
+    'gaming': {
+        name: 'Gaming',
+        description: 'Gaming websites, game stores, gaming platforms, gaming forums, and gaming-related content including video game distribution platforms, gaming communities, game streaming services, gaming news, reviews, and platforms where users can play, purchase, or discuss video games and gaming culture.'
+    },
+    'music': {
+        name: 'Music & Entertainment',
+        description: 'Music streaming services, music videos, music news, concert tickets, music discovery platforms, and entertainment content focused on music, artists, albums, songs, concerts, festivals, and music-related entertainment. This includes both streaming platforms and music-focused social networks.'
+    },
+    'shopping': {
+        name: 'Shopping & E-commerce',
+        description: 'E-commerce sites, online stores, deal sites, auction sites, and shopping platforms where users can browse, compare, and purchase products or services. This includes online marketplaces, retail websites, deal aggregators, coupon sites, and platforms focused on commercial transactions and shopping experiences.'
+    },
+    'travel': {
+        name: 'Travel & Tourism',
+        description: 'Travel booking websites, vacation planning platforms, hotel booking sites, flight booking services, travel guides, and tourism-related content including travel deals, destination information, accommodation booking, transportation booking, and travel planning tools and resources.'
+    }
+};

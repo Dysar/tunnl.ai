@@ -204,6 +204,3 @@ var KNOWN_URL_CATEGORIES = {
     'livejasmin.com': 'nsfw',
     'www.livejasmin.com': 'nsfw'
 };
-
-// Export for use in other files
-module.exports = KNOWN_URL_CATEGORIES;

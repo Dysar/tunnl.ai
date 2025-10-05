@@ -9,6 +9,17 @@ function normalizeHostname(url) {
     }
 }
 
+function buildOriginNormalizedUrl(url) {
+    try {
+        const u = new URL(url);
+        const hostNorm = normalizeHostname(url);
+        const port = u.port ? `:${u.port}` : '';
+        return `${u.protocol}//${hostNorm}${port}`;
+    } catch {
+        return url;
+    }
+}
+
 function lookupKnownCategory(url, knownMap) {
     try {
         const hostname = new URL(url).hostname.toLowerCase();
@@ -36,10 +47,12 @@ function buildCacheKey({ useCategories, url, selectedCategories = [], taskText =
 try {
     if (typeof self !== 'undefined') {
         self.normalizeHostname = normalizeHostname;
+        self.buildOriginNormalizedUrl = buildOriginNormalizedUrl;
         self.lookupKnownCategory = lookupKnownCategory;
         self.buildCacheKey = buildCacheKey;
     } else if (typeof window !== 'undefined') {
         window.normalizeHostname = normalizeHostname;
+        window.buildOriginNormalizedUrl = buildOriginNormalizedUrl;
         window.lookupKnownCategory = lookupKnownCategory;
         window.buildCacheKey = buildCacheKey;
     }
@@ -49,6 +62,7 @@ try {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         normalizeHostname,
+        buildOriginNormalizedUrl,
         lookupKnownCategory,
         buildCacheKey
     };

@@ -1,11 +1,16 @@
 const assert = require('assert');
-const { normalizeHostname, lookupKnownCategory, buildCacheKey } = require('./url-utils');
+const { normalizeHostname, buildOriginNormalizedUrl, lookupKnownCategory, buildCacheKey } = require('../url-analysis/url-utils');
 
 (function testNormalizeHostname() {
     assert.strictEqual(normalizeHostname('https://www.Example.com/path'), 'example.com');
     assert.strictEqual(normalizeHostname('https://example.com'), 'example.com');
     assert.strictEqual(normalizeHostname('http://WWW.SUB.EXAMPLE.com'), 'sub.example.com');
     assert.strictEqual(normalizeHostname('not-a-url'), '');
+})();
+
+(function testBuildOriginNormalizedUrl() {
+    assert.strictEqual(buildOriginNormalizedUrl('https://www.Example.com/path?a=1#x'), 'https://example.com');
+    assert.strictEqual(buildOriginNormalizedUrl('http://WWW.SUB.EXAMPLE.com:8080/a/b'), 'http://sub.example.com:8080');
 })();
 
 (function testLookupKnownCategory() {

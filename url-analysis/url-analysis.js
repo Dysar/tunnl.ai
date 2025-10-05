@@ -172,15 +172,15 @@ const UrlAnalysis = {
                     systemPrompt = `You are a productivity assistant...\nCurrent activities/tasks: "${normalizedCurrentTaskText}"\nRecent browsing context:\n${recent}\nCurrent URL to analyze: ${url}`;
                 }
 
-                // Build normalized URL for analysis (protocol + normalized host + pathname; no query/hash)
+                // Build normalized URL for analysis (origin-only: protocol + normalized host [+ port])
                 let normalizedForAnalysis = url;
                 try {
                     const u = new URL(url);
                     const hostNorm = (typeof self !== 'undefined' && typeof self.normalizeHostname === 'function')
                         ? self.normalizeHostname(url)
                         : u.hostname.toLowerCase().replace(/^www\./, '');
-                    const path = u.pathname || '/';
-                    normalizedForAnalysis = `${u.protocol}//${hostNorm}${path}`;
+                    const port = u.port ? `:${u.port}` : '';
+                    normalizedForAnalysis = `${u.protocol}//${hostNorm}${port}`;
                 } catch {}
 
                 const contentForLlm = `Analyze this URL (normalized): ${normalizedForAnalysis}${extractedContent ? `\n\nWebsite content (extracted):\n${extractedContent}` : ''}`;

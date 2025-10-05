@@ -348,6 +348,16 @@ class TunnlBackground {
                 }
                 break;
 
+            case 'CLEAR_CACHE':
+                try {
+                    await this.clearAllCache();
+                    sendResponse({ success: true });
+                } catch (error) {
+                    console.error('Error clearing cache:', error);
+                    sendResponse({ success: false, error: error.message });
+                }
+                break;
+
             case 'UPDATE_SETTINGS':
                 this.settings = { ...this.settings, ...message.settings };
                 await this.saveSettings();
@@ -1372,6 +1382,47 @@ class TunnlBackground {
         console.log(`   Output Cost: $${outputCost.toFixed(6)}`);
         console.log(`   Total Cost: $${totalCost.toFixed(6)}`);
         console.log('   Model: GPT-3.5-turbo');
+    }
+
+    // Clear all cache and saved URLs
+    async clearAllCache() {
+        console.log('🧹 Clearing all cache and saved URLs...');
+        
+        try {
+            // Clear URL cache
+            this.urlCache.clear();
+            console.log('✅ URL cache cleared');
+            
+            // Clear content cache
+            this.contentCache.clear();
+            console.log('✅ Content cache cleared');
+            
+            // Clear extraction in progress tracking
+            this.extractionInProgress.clear();
+            console.log('✅ Extraction tracking cleared');
+            
+            // Clear navigation debounce tracking
+            this.navigationDebounce.clear();
+            console.log('✅ Navigation debounce cleared');
+            
+            // Clear blocked sites from settings
+            this.settings.blockedSites = [];
+            console.log('✅ Blocked sites cleared');
+            
+            // Save the updated settings
+            await this.saveSettings();
+            console.log('✅ Settings saved');
+            
+            // Clear any cached data from Chrome storage
+            await chrome.storage.local.remove(['urlCache', 'contentCache', 'blockedSites']);
+            console.log('✅ Chrome storage cache cleared');
+            
+            console.log('🎉 All cache and saved URLs cleared successfully!');
+            
+        } catch (error) {
+            console.error('❌ Error clearing cache:', error);
+            throw error;
+        }
     }
 
     // Extract content from a URL using direct fetch (no tabs needed)

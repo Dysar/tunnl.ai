@@ -88,6 +88,11 @@ class TunnlOptions {
             this.resetStats();
         });
 
+        // Clear cache and saved URLs
+        document.getElementById('clear-cache').addEventListener('click', () => {
+            this.clearCache();
+        });
+
         // Clear all data
         document.getElementById('clear-all-data').addEventListener('click', () => {
             this.clearAllData();
@@ -191,6 +196,25 @@ class TunnlOptions {
             } catch (error) {
                 console.error('Error resetting statistics:', error);
                 this.showMessage('Error resetting statistics', 'error');
+            }
+        }
+    }
+
+    async clearCache() {
+        if (confirm('Are you sure you want to clear the cache and all saved URLs? This will remove all cached analysis results and saved URL data, but keep your settings and tasks. This cannot be undone.')) {
+            try {
+                const response = await chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' });
+                if (response.success) {
+                    this.showMessage('Cache and saved URLs cleared successfully!', 'success');
+                    // Refresh the UI to show updated statistics
+                    await this.updateStatistics();
+                    this.renderBlockedHistory();
+                } else {
+                    this.showMessage('Failed to clear cache: ' + (response.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error clearing cache:', error);
+                this.showMessage('Error clearing cache. Please try again.', 'error');
             }
         }
     }

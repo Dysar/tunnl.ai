@@ -172,11 +172,29 @@ const UrlAnalysis = {
                     systemPrompt = `You are a productivity assistant...\nCurrent activities/tasks: "${normalizedCurrentTaskText}"\nRecent browsing context:\n${recent}\nCurrent URL to analyze: ${url}`;
                 }
 
+                // Build normalized URL for analysis (protocol + normalized host + pathname; no query/hash)
+                let normalizedForAnalysis = url;
+                try {
+                    const u = new URL(url);
+                    const hostNorm = (typeof self !== 'undefined' && typeof self.normalizeHostname === 'function')
+                        ? self.normalizeHostname(url)
+                        : u.hostname.toLowerCase().replace(/^www\./, '');
+                    const path = u.pathname || '/';
+                    normalizedForAnalysis = `${u.protocol}//${hostNorm}${path}`;
+                } catch {}
+
+                const contentForLlm = `Analyze this URL (normalized): ${normalizedForAnalysis}${extractedContent ? `\n\nWebsite content (extracted):\n${extractedContent}` : ''}`;
+                try {
+                    const len = (extractedContent || '').length;
+                    console.log('📝 LLM content length (chars):', len);
+                    console.log('🔗 LLM normalized URL:', normalizedForAnalysis);
+                } catch {}
+
                 const body = {
                     model: 'gpt-3.5-turbo',
                     messages: [
                         { role: 'system', content: systemPrompt },
-                        { role: 'user', content: `Analyze this URL: ${url}${extractedContent ? `\n\nWebsite content (extracted):\n${extractedContent}` : ''}` }
+                        { role: 'user', content: contentForLlm }
                     ],
                     temperature: 0.3,
                     max_tokens: 200

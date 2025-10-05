@@ -55,14 +55,17 @@ class TunnlContent {
                 this.showBlockModal(message.url, message.message, message.activityUnderstanding, message.currentTask);
                 sendResponse({ success: true });
             } else if (message && message.type === 'EXTRACT_CONTENT') {
-                // Return rendered DOM content for analysis
-                try {
-                    const content = this.extractPageContent();
-                    sendResponse({ success: true, content: content || '' });
-                } catch (e) {
-                    console.error('❌ DOM extraction failed:', e);
-                    sendResponse({ success: false, error: e?.message || 'DOM extraction failed' });
-                }
+                // Return rendered DOM content for analysis (wait for DOM readiness briefly)
+                (async () => {
+                    try {
+                        await this.waitForDomReady(2000);
+                        const content = this.extractPageContent();
+                        sendResponse({ success: true, content: content || '' });
+                    } catch (e) {
+                        console.error('❌ DOM extraction failed:', e);
+                        sendResponse({ success: false, error: e?.message || 'DOM extraction failed' });
+                    }
+                })();
             }
             // Content extraction is now handled in background script via fetch
             
@@ -168,6 +171,12 @@ class TunnlContent {
 
     extractPageContent() {
         try {
+            // Guard against early execution
+            if (!document || !document.documentElement) return '';
+            if (!document.body) {
+                // No body yet; return empty to let background fallback to fetch
+                return '';
+            }
             // Remove script and style elements
             const scripts = document.querySelectorAll('script, style, noscript, nav, header, footer, aside');
             scripts.forEach(el => el.remove());
@@ -197,7 +206,8 @@ class TunnlContent {
             
             // Fallback to body if no main content found
             if (!mainContent || mainContent.length < 50) {
-                mainContent = document.body.innerText || document.body.textContent || '';
+                const bodyEl = document.body;
+                mainContent = (bodyEl && (bodyEl.innerText || bodyEl.textContent)) || '';
             }
             
             // Clean up the text
@@ -235,6 +245,16 @@ class TunnlContent {
             console.error('❌ Content extraction failed:', error);
             return null;
         }
+    }
+
+    waitForDomReady(timeoutMs = 1500) {
+        return new Promise(resolve => {
+            const done = () => resolve();
+            if (document.readyState !== 'loading' && document.body) return done();
+            const onReady = () => { document.removeEventListener('DOMContentLoaded', onReady); done(); };
+            document.addEventListener('DOMContentLoaded', onReady, { once: true });
+            setTimeout(done, timeoutMs);
+        });
     }
 
     showBlockModal(blockedUrl, reasonMessage, activityUnderstanding, currentTask) {

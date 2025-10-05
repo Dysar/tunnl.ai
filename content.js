@@ -54,6 +54,15 @@ class TunnlContent {
                 console.log('🔍 About to call showBlockModal...');
                 this.showBlockModal(message.url, message.message, message.activityUnderstanding, message.currentTask);
                 sendResponse({ success: true });
+            } else if (message && message.type === 'EXTRACT_CONTENT') {
+                // Return rendered DOM content for analysis
+                try {
+                    const content = this.extractPageContent();
+                    sendResponse({ success: true, content: content || '' });
+                } catch (e) {
+                    console.error('❌ DOM extraction failed:', e);
+                    sendResponse({ success: false, error: e?.message || 'DOM extraction failed' });
+                }
             }
             // Content extraction is now handled in background script via fetch
             

@@ -3,9 +3,11 @@
 // Import TaskValidator and StatisticsManager
 importScripts('task-validator.js');
 importScripts('settings-page/statistics.js');
-importScripts('url-categories.js');
+importScripts('url-analysis/url-categories.js');
 importScripts('env-config.js');
-importScripts('url-utils.js');
+importScripts('url-analysis/url-utils.js');
+importScripts('url-analysis/content-extractor.js');
+importScripts('url-analysis/url-analysis.js');
 
 class TunnlBackground {
     constructor() {
@@ -632,7 +634,11 @@ class TunnlBackground {
         } catch { }
 
         // Always analyze URLs for data collection, but only block when extension is enabled
-        await this.analyzeAndBlockUrl(details.url, details.tabId);
+        if (typeof self !== 'undefined' && self.UrlAnalysis && typeof self.UrlAnalysis.analyzeAndBlockUrl === 'function') {
+            await self.UrlAnalysis.analyzeAndBlockUrl(this, details.url, details.tabId);
+        } else {
+            await this.analyzeAndBlockUrl(details.url, details.tabId);
+        }
     }
 
     async analyzeAndBlockUrl(url, tabId) {
@@ -692,20 +698,39 @@ class TunnlBackground {
                 return;
             }
 
-            // Extract content if enabled and not cached
+            // Extract content: prefer DOM content via content script, fallback to fetch
             let extractedContent = null;
             if (this.contentExtractionEnabled) {
-                console.log('🔍 Attempting to extract content from URL:', url);
+                console.log('🔍 Trying DOM-based content extraction first:', url);
                 try {
-                    extractedContent = await this.extractContentFromUrl(url);
-                    if (extractedContent) {
-                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
-                        console.log('✅ Content extracted successfully (first 10 words):', `"${firstWords}..."`);
+                    if (typeof tabId === 'number') {
+                        const domResult = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_CONTENT' });
+                        if (domResult && domResult.success && domResult.content) {
+                            extractedContent = domResult.content;
+                            console.log('✅ DOM content extracted');
+                        } else {
+                            console.log('⚠️ DOM extraction returned empty, falling back to fetch');
+                        }
                     } else {
-                        console.log('⚠️ Content extraction returned empty result');
+                        console.log('⚠️ No tabId provided; skipping DOM extraction');
                     }
-                } catch (error) {
-                    console.warn('❌ Failed to extract content from URL:', url, error);
+                } catch (err) {
+                    console.log('⚠️ DOM extraction failed (likely content script not ready/CSP):', err?.message);
+                }
+
+                if (!extractedContent) {
+                    console.log('🔍 Attempting fetch-based content extraction fallback:', url);
+                    try {
+                        extractedContent = await this.extractContentFromUrl(url);
+                        if (extractedContent) {
+                            const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                            console.log('✅ Fallback content extracted (first 10 words):', `"${firstWords}..."`);
+                        } else {
+                            console.log('⚠️ Fallback extraction returned empty result');
+                        }
+                    } catch (error) {
+                        console.warn('❌ Fallback extraction failed:', url, error);
+                    }
                 }
             } else {
                 console.log('⏭️ Content extraction disabled, skipping for URL:', url);

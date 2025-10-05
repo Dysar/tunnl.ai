@@ -25,13 +25,13 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "extension-popup/popup.html",
     "default_title": "tunnl.ai Settings"
   },
   "options_page": "settings-page/options.html",
     "web_accessible_resources": [
         {
-            "resources": ["blocked.html", "blocked.js", "blocked-modal.html", "blocked-modal.js", "Instagram Post Design (3).png", "Excalifont Regular.woff2", "assets/beaver.png", "assets/access_denied.png", "assets/blocked_beaver.png"],
+            "resources": ["blocked.html", "blocked-page.js", "blocked-modal.html", "blocked-modal.js", "Instagram Post Design (3).png", "Excalifont Regular.woff2", "assets/beaver.png", "assets/access_denied.png", "assets/blocked_beaver.png"],
             "matches": ["<all_urls>"]
         }
     ]

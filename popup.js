@@ -628,12 +628,66 @@ class TunnlPopup {
                 </svg>
             `;
             deleteButton.title = 'Delete task';
+            console.log('🔧 Creating delete button for task:', normalizedTaskText);
+            
+            // Test if the button is actually clickable
+            deleteButton.style.pointerEvents = 'auto';
+            deleteButton.style.zIndex = '9999';
+            deleteButton.style.position = 'relative';
 
             // Add click handler for delete button (stop propagation to prevent task selection)
             deleteButton.addEventListener('click', (e) => {
+                console.log('🗑️ Delete button click event triggered!');
                 e.stopPropagation(); // Prevent task selection when clicking delete
+                e.preventDefault(); // Prevent any default behavior
+                console.log('🗑️ Delete button clicked for task:', normalizedTaskText);
+                alert('Delete button clicked!'); // Temporary test
                 this.deleteTaskFromList(normalizedTaskText);
             });
+            
+            // Add a more direct onclick handler as backup
+            deleteButton.onclick = (e) => {
+                console.log('🗑️ Delete button onclick triggered!');
+                e.stopPropagation();
+                e.preventDefault();
+                alert('Delete button onclick!');
+                this.deleteTaskFromList(normalizedTaskText);
+            };
+            
+            // Add mouseover event for testing
+            deleteButton.addEventListener('mouseover', () => {
+                console.log('🖱️ Mouse over delete button for task:', normalizedTaskText);
+            });
+            
+            // Add mousedown event to test if ANY mouse event works
+            deleteButton.addEventListener('mousedown', (e) => {
+                console.log('🖱️ Mouse DOWN on delete button for task:', normalizedTaskText);
+                console.log('🖱️ Mouse down event:', e);
+            });
+            
+            // Add mouseup event
+            deleteButton.addEventListener('mouseup', (e) => {
+                console.log('🖱️ Mouse UP on delete button for task:', normalizedTaskText);
+                console.log('🖱️ Mouse up event:', e);
+            });
+            
+            // Add click handler to the SVG as well
+            const svg = deleteButton.querySelector('svg');
+            if (svg) {
+                svg.addEventListener('click', (e) => {
+                    console.log('🗑️ SVG clicked directly!');
+                    e.stopPropagation();
+                    e.preventDefault();
+                    alert('SVG clicked!');
+                    this.deleteTaskFromList(normalizedTaskText);
+                });
+                console.log('✅ SVG click handler attached');
+            } else {
+                console.log('❌ SVG not found in delete button');
+            }
+            
+            console.log('✅ Delete button event listener attached for task:', normalizedTaskText);
+            console.log('🔍 deleteTaskFromList method exists:', typeof this.deleteTaskFromList);
 
             // Add click handler for radio button (completion for all tasks)
             radio.addEventListener('click', (e) => {
@@ -644,8 +698,17 @@ class TunnlPopup {
 
             // Add click handler for the entire task item (except buttons)
             taskItem.addEventListener('click', (e) => {
-                // Don't trigger if clicking on buttons
-                if (e.target.closest('.task-delete-btn') || e.target.closest('.task-radio')) {
+                console.log('🖱️ Task item clicked, target:', e.target);
+                console.log('🔍 Target class list:', e.target.classList);
+                console.log('🔍 Target tag name:', e.target.tagName);
+                console.log('🔍 Checking for delete button:', e.target.closest('.task-delete-btn'));
+                console.log('🔍 Checking for radio button:', e.target.closest('.task-radio'));
+                
+                // Don't trigger if clicking on buttons or their children
+                if (e.target.closest('.task-delete-btn') || e.target.closest('.task-radio') || 
+                    e.target.classList.contains('task-delete-btn') || e.target.classList.contains('task-radio') ||
+                    e.target.tagName === 'BUTTON' || e.target.tagName === 'SVG' || e.target.tagName === 'PATH') {
+                    console.log('✅ Click intercepted by button/element, not processing task item click');
                     return;
                 }
 
@@ -661,7 +724,21 @@ class TunnlPopup {
             taskItem.appendChild(radio);
             taskItem.appendChild(taskTextElement);
             taskItem.appendChild(deleteButton);
+            console.log('📋 Adding task item to DOM for task:', normalizedTaskText);
             taskList.appendChild(taskItem);
+            console.log('✅ Task item added to DOM successfully');
+            
+            // Test if we can find the button after adding to DOM
+            setTimeout(() => {
+                const foundButton = taskItem.querySelector('.task-delete-btn');
+                if (foundButton) {
+                    console.log('✅ Delete button found in DOM after adding');
+                    console.log('🔍 Button element:', foundButton);
+                    console.log('🔍 Button clickable:', foundButton.style.pointerEvents);
+                } else {
+                    console.log('❌ Delete button NOT found in DOM after adding');
+                }
+            }, 100);
         });
 
         // Render completed tasks
@@ -924,13 +1001,20 @@ class TunnlPopup {
 
 
     async deleteTaskFromList(taskText) {
+        console.log('🗑️ deleteTaskFromList called with:', taskText);
+        console.log('📋 Current tasks before deletion:', this.settings.tasks);
+        
         if (confirm('Are you sure you want to delete this task?')) {
             try {
                 // Remove task from local settings
                 this.settings.tasks = this.settings.tasks.filter(task => {
                     const taskTextToCompare = task.text || task;
-                    return taskTextToCompare !== taskText;
+                    const shouldKeep = taskTextToCompare !== taskText;
+                    console.log(`🔍 Comparing '${taskTextToCompare}' with '${taskText}': ${shouldKeep ? 'KEEP' : 'DELETE'}`);
+                    return shouldKeep;
                 });
+                
+                console.log('📋 Tasks after deletion:', this.settings.tasks);
 
                 // If this was the current task, clear it
                 if (this.settings.currentTask?.text === taskText) {
@@ -942,11 +1026,15 @@ class TunnlPopup {
                 }
 
                 // Save settings
+                console.log('💾 Saving settings...');
                 await this.saveSettings();
+                console.log('✅ Settings saved successfully');
 
                 // Update the UI
+                console.log('🔄 Updating UI...');
                 this.updateTaskList();
                 this.updateUI();
+                console.log('✅ UI updated successfully');
             } catch (error) {
                 console.error('Error deleting task:', error);
             }
@@ -1150,6 +1238,16 @@ class TunnlPopup {
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     new TunnlPopup();
+    
+    // Add global click listener for debugging
+    document.addEventListener('click', (e) => {
+        console.log('🌍 Global click detected on:', e.target);
+        console.log('🌍 Target class list:', e.target.classList);
+        console.log('🌍 Target tag name:', e.target.tagName);
+        if (e.target.closest('.task-delete-btn')) {
+            console.log('🌍 Global click detected on delete button!');
+        }
+    });
 });
 
 // Listen for messages from background script

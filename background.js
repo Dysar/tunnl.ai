@@ -837,7 +837,7 @@ class TunnlBackground {
 
                     // Log content being sent to LLM (first 10 words for debugging)
                     if (extractedContent) {
-                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                        const firstWords = extractedContent.split(' ').slice(0, 30).join(' ');
                         console.log('📄 Sending website content to LLM (first 10 words):', `"${firstWords}..."`);
                         console.log('📊 Content stats:', {
                             totalLength: extractedContent.length,
@@ -1340,56 +1340,72 @@ class TunnlBackground {
         }
     }
 
-    // Extract text content from HTML string
+    // Extract text content from HTML string using regex (service worker compatible)
     extractTextFromHtml(html, url) {
         try {
-            // Create a temporary DOM parser (works in service worker)
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+            // Extract title using regex
+            const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : '';
             
-            // Extract title
-            const title = doc.querySelector('title')?.textContent?.trim() || '';
+            // Extract meta description using regex
+            const metaMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["'][^>]*>/i);
+            const metaDescription = metaMatch ? metaMatch[1].trim() : '';
             
-            // Extract meta description
-            const metaDescription = doc.querySelector('meta[name="description"]')?.getAttribute('content')?.trim() || '';
+            // Remove script and style tags and their content
+            let cleanHtml = html
+                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+                .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+                .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+                .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+                .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '');
             
-            // Remove script and style elements
-            const scripts = doc.querySelectorAll('script, style, noscript');
-            scripts.forEach(el => el.remove());
-            
-            // Try to find main content areas
+            // Try to find main content areas using regex
             const mainContentSelectors = [
-                'main',
-                'article',
-                '[role="main"]',
-                '.content',
-                '.main-content',
-                '.post-content',
-                '.entry-content',
-                '#content',
-                '#main'
+                /<main[^>]*>([\s\S]*?)<\/main>/gi,
+                /<article[^>]*>([\s\S]*?)<\/article>/gi,
+                /<div[^>]*role=["']main["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*main-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*post-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*entry-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*id=["']content["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*id=["']main["'][^>]*>([\s\S]*?)<\/div>/gi
             ];
             
             let mainContent = '';
             for (const selector of mainContentSelectors) {
-                const element = doc.querySelector(selector);
-                if (element) {
-                    mainContent = element.textContent;
+                const match = cleanHtml.match(selector);
+                if (match && match[1]) {
+                    mainContent = match[1];
                     break;
                 }
             }
             
-            // If no main content found, use body
+            // If no main content found, try to get body content
             if (!mainContent) {
-                const body = doc.querySelector('body');
-                if (body) {
-                    mainContent = body.textContent;
+                const bodyMatch = cleanHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/gi);
+                if (bodyMatch && bodyMatch[1]) {
+                    mainContent = bodyMatch[1];
                 }
             }
             
-            // Clean and normalize text
-            const cleanText = mainContent
-                .replace(/\s+/g, ' ')
+            // If still no content, use the entire cleaned HTML
+            if (!mainContent) {
+                mainContent = cleanHtml;
+            }
+            
+            // Remove all HTML tags and get text content
+            const textContent = mainContent
+                .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+                .replace(/&nbsp;/g, ' ') // Replace HTML entities
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/\s+/g, ' ') // Normalize whitespace
                 .replace(/\n+/g, ' ')
                 .trim();
             
@@ -1397,7 +1413,7 @@ class TunnlBackground {
             let result = '';
             if (title) result += `Title: ${title}\n\n`;
             if (metaDescription) result += `Description: ${metaDescription}\n\n`;
-            if (cleanText) result += `Content: ${cleanText}`;
+            if (textContent) result += `Content: ${textContent}`;
             
             // Limit to max length
             if (result.length > this.maxContentLength) {
@@ -1549,3 +1565,4 @@ const tunnl = new TunnlBackground();
 setInterval(() => {
     tunnl.cleanupCache();
 }, 60 * 60 * 1000 * 24);
+

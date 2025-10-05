@@ -4,6 +4,7 @@
 importScripts('task-validator.js');
 importScripts('statistics.js');
 importScripts('url-categories.js');
+importScripts('env-config.js');
 
 class TunnlBackground {
     constructor() {
@@ -31,6 +32,15 @@ class TunnlBackground {
         this.contentCache = new Map(); // Cache extracted content
         this.extractionInProgress = new Set(); // Track URLs currently being extracted
         this.navigationDebounce = new Map(); // Debounce navigation events
+        
+        // Cost tracking settings
+        this.costTrackingEnabled = true;
+        this.gpt35TurboPricing = {
+            inputTokensPerDollar: 1000 / 0.0015, // ~666,667 tokens per dollar
+            outputTokensPerDollar: 1000 / 0.002, // ~500,000 tokens per dollar
+            inputCostPerToken: 0.0015 / 1000, // $0.0000015 per token
+            outputCostPerToken: 0.002 / 1000   // $0.000002 per token
+        };
         
         this.init();
     }
@@ -81,6 +91,22 @@ class TunnlBackground {
     }
 
     async loadSettings() {
+        // Check for environment variable first (for development)
+        let envApiKey = '';
+        try {
+            // Check both self.ENV_CONFIG (service worker) and ENV_CONFIG (fallback)
+            const envConfig = (typeof self !== 'undefined' && self.ENV_CONFIG) || 
+                             (typeof ENV_CONFIG !== 'undefined' && ENV_CONFIG) || 
+                             {};
+            
+            if (envConfig.OPENAI_API_KEY) {
+                envApiKey = envConfig.OPENAI_API_KEY;
+                console.log('🔑 Found API key in environment configuration');
+            }
+        } catch (error) {
+            console.log('🔧 No environment configuration available');
+        }
+
         // Try local storage first (higher limits), fallback to sync
         let result;
         try {
@@ -126,7 +152,7 @@ class TunnlBackground {
         }
 
         this.settings = {
-            openaiApiKey: result.openaiApiKey || '',
+            openaiApiKey: envApiKey || result.openaiApiKey || '',
             tasks: result.tasks || [],
             currentTask: result.currentTask || null,
             extensionEnabled: result.extensionEnabled !== false,
@@ -137,6 +163,15 @@ class TunnlBackground {
             selectedCategories: Array.isArray(result.selectedCategories) ? result.selectedCategories : [],
             useCategories: result.useCategories || false
         };
+
+        // Log API key source
+        if (envApiKey) {
+            console.log('🔑 Using API key from environment configuration');
+        } else if (result.openaiApiKey) {
+            console.log('🔑 Using API key from storage');
+        } else {
+            console.log('⚠️ No API key found - user will need to configure one');
+        }
     }
 
     updateTaskValidator() {
@@ -849,6 +884,10 @@ class TunnlBackground {
                         console.log('⚠️ No website content available for LLM analysis');
                     }
 
+                    // Log cost prediction before analysis
+                    const userPrompt = `Current URL to analyze: ${url}${contentSection}`;
+                    this.logCostPrediction(url, '', userPrompt, extractedContent);
+
                     systemPrompt = `
                     You are a productivity assistant that helps users stay focused by blocking distracting websites based on selected categories.
                     Analyze the given URL and determine if it belongs to any of the selected categories that should be blocked.
@@ -899,6 +938,10 @@ class TunnlBackground {
                     } else {
                         console.log('⚠️ No website content available for task-based LLM analysis');
                     }
+
+                    // Log cost prediction before task-based analysis
+                    const userPrompt = `Current URL to analyze: ${url}${contentSection}`;
+                    this.logCostPrediction(url, '', userPrompt, extractedContent);
 
                     systemPrompt = `
                     You are a productivity assistant that helps users stay focused on their tasks. 
@@ -972,6 +1015,11 @@ class TunnlBackground {
 
             const data = await response.json();
             const content = data.choices[0].message.content;
+
+            // Log actual cost if usage information is available
+            if (data.usage) {
+                this.logActualCost(url, data.usage);
+            }
 
             try {
                 const result = JSON.parse(content);
@@ -1242,6 +1290,88 @@ class TunnlBackground {
     // Get category description for debugging/logging
     getCategoryDescription(category) {
         return CATEGORY_DESCRIPTIONS[category] || null;
+    }
+
+    // Estimate token count for text (rough approximation)
+    estimateTokenCount(text) {
+        if (!text) return 0;
+        
+        // Rough estimation: 1 token ≈ 4 characters for English text
+        // This is a simplified approximation - actual tokenization varies
+        const charCount = text.length;
+        const estimatedTokens = Math.ceil(charCount / 4);
+        
+        return estimatedTokens;
+    }
+
+    // Calculate cost for GPT-3.5-turbo analysis
+    calculateAnalysisCost(systemPrompt, userPrompt, estimatedResponseLength = 100) {
+        if (!this.costTrackingEnabled) return null;
+        
+        const inputTokens = this.estimateTokenCount(systemPrompt) + this.estimateTokenCount(userPrompt);
+        const outputTokens = this.estimateTokenCount(' '.repeat(estimatedResponseLength)); // Estimate response length
+        
+        const inputCost = inputTokens * this.gpt35TurboPricing.inputCostPerToken;
+        const outputCost = outputTokens * this.gpt35TurboPricing.outputCostPerToken;
+        const totalCost = inputCost + outputCost;
+        
+        return {
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            inputCost,
+            outputCost,
+            totalCost,
+            formatted: {
+                inputCost: `$${inputCost.toFixed(6)}`,
+                outputCost: `$${outputCost.toFixed(6)}`,
+                totalCost: `$${totalCost.toFixed(6)}`
+            }
+        };
+    }
+
+    // Log cost prediction for analysis
+    logCostPrediction(url, systemPrompt, userPrompt, extractedContent = null) {
+        if (!this.costTrackingEnabled) return;
+        
+        const cost = this.calculateAnalysisCost(systemPrompt, userPrompt);
+        if (!cost) return;
+        
+        console.log('💰 Cost Prediction for Analysis:');
+        console.log(`   URL: ${url}`);
+        console.log(`   Input Tokens: ${cost.inputTokens.toLocaleString()}`);
+        console.log(`   Output Tokens: ${cost.outputTokens.toLocaleString()} (estimated)`);
+        console.log(`   Total Tokens: ${cost.totalTokens.toLocaleString()}`);
+        console.log(`   Input Cost: ${cost.formatted.inputCost}`);
+        console.log(`   Output Cost: ${cost.formatted.outputCost}`);
+        console.log(`   Total Cost: ${cost.formatted.totalCost}`);
+        
+        if (extractedContent) {
+            const contentTokens = this.estimateTokenCount(extractedContent);
+            console.log(`   Content Tokens: ${contentTokens.toLocaleString()}`);
+        }
+        
+        console.log('   Model: GPT-3.5-turbo');
+        console.log('   Pricing: $0.0015/1K input, $0.002/1K output tokens');
+    }
+
+    // Log actual cost after API call
+    logActualCost(url, usage) {
+        if (!this.costTrackingEnabled || !usage) return;
+        
+        const inputCost = usage.prompt_tokens * this.gpt35TurboPricing.inputCostPerToken;
+        const outputCost = usage.completion_tokens * this.gpt35TurboPricing.outputCostPerToken;
+        const totalCost = inputCost + outputCost;
+        
+        console.log('💰 Actual Cost for Analysis:');
+        console.log(`   URL: ${url}`);
+        console.log(`   Input Tokens: ${usage.prompt_tokens.toLocaleString()}`);
+        console.log(`   Output Tokens: ${usage.completion_tokens.toLocaleString()}`);
+        console.log(`   Total Tokens: ${usage.total_tokens.toLocaleString()}`);
+        console.log(`   Input Cost: $${inputCost.toFixed(6)}`);
+        console.log(`   Output Cost: $${outputCost.toFixed(6)}`);
+        console.log(`   Total Cost: $${totalCost.toFixed(6)}`);
+        console.log('   Model: GPT-3.5-turbo');
     }
 
     // Extract content from a URL using direct fetch (no tabs needed)

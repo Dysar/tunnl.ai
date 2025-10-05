@@ -2,9 +2,10 @@
 
 // Import TaskValidator and StatisticsManager
 importScripts('task-validator.js');
-importScripts('statistics.js');
+importScripts('settings-page/statistics.js');
 importScripts('url-categories.js');
 importScripts('env-config.js');
+importScripts('url-utils.js');
 
 class TunnlBackground {
     constructor() {
@@ -43,6 +44,19 @@ class TunnlBackground {
         };
         
         this.init();
+    }
+
+    // Normalize hostname for site-level decisions (delegate to shared util if available)
+    normalizeHostname(url) {
+        if (typeof self !== 'undefined' && typeof self.normalizeHostname === 'function') {
+            return self.normalizeHostname(url);
+        }
+        try {
+            const hostname = new URL(url).hostname.toLowerCase();
+            return hostname.replace(/^www\./, '');
+        } catch {
+            return '';
+        }
     }
 
     async init() {
@@ -630,16 +644,24 @@ class TunnlBackground {
         });
 
         try {
-            // Create cache key based on mode
+            // Create cache key at site level (normalized hostname)
+            const host = this.normalizeHostname(url);
             let cacheKey;
-            if (this.settings.useCategories) {
-                const categoriesKey = this.settings.selectedCategories.join(',');
-                const contextKey = this.recentUrls.slice(0, 3).join('|'); // Use first 3 URLs for context
-                cacheKey = `${url}||categories:${categoriesKey}||${contextKey}`;
+            if (typeof self !== 'undefined' && typeof self.buildCacheKey === 'function') {
+                cacheKey = self.buildCacheKey({
+                    useCategories: this.settings.useCategories,
+                    url,
+                    selectedCategories: this.settings.selectedCategories,
+                    taskText: this.settings.currentTask?.text || ''
+                });
             } else {
-                const taskKey = this.settings.currentTask?.text || '';
-                const contextKey = this.recentUrls.slice(0, 3).join('|'); // Use first 3 URLs for context
-                cacheKey = `${url}||${taskKey}||${contextKey}`;
+                if (this.settings.useCategories) {
+                    const categoriesKey = this.settings.selectedCategories.join(',');
+                    cacheKey = `host:${host}||categories:${categoriesKey}`;
+                } else {
+                    const taskKey = this.settings.currentTask?.text || '';
+                    cacheKey = `host:${host}||task:${taskKey}`;
+                }
             }
             
             console.log('💾 Cache check:', {
@@ -1277,11 +1299,16 @@ class TunnlBackground {
     }
 
 
-    // Check if URL has a known category
+    // Check if URL has a known category (robust to www) using shared util when present
     getKnownUrlCategory(url) {
         try {
+            if (typeof self !== 'undefined' && typeof self.lookupKnownCategory === 'function') {
+                return self.lookupKnownCategory(url, this.knownUrlCategories);
+            }
             const hostname = new URL(url).hostname.toLowerCase();
-            return this.knownUrlCategories[hostname] || null;
+            const normalized = hostname.replace(/^www\./, '');
+            const withWww = `www.${normalized}`;
+            return this.knownUrlCategories[hostname] || this.knownUrlCategories[normalized] || this.knownUrlCategories[withWww] || null;
         } catch (error) {
             return null;
         }

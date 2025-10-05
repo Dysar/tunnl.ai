@@ -425,9 +425,15 @@ class TunnlBackground {
                     const { url, duration } = message;
                     if (!url) throw new Error('url is required');
                     const durationMs = (duration || 10) * 60 * 1000; // Default 10 minutes
+                    let hostNorm = '';
+                    try {
+                        hostNorm = this.normalizeHostname ? this.normalizeHostname(url) : new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+                    } catch {}
                     await chrome.storage.local.set({
                         temporaryUnblock: {
                             url: url,
+                            host: hostNorm,
+                            origin: (() => { try { return new URL(url).origin; } catch { return undefined; } })(),
                             until: Date.now() + durationMs
                         }
                     });
@@ -596,11 +602,16 @@ class TunnlBackground {
             const local = await chrome.storage.local.get(['temporaryUnblock']);
             const bypass = local.temporaryUnblock;
             if (bypass && bypass.url && bypass.until && Date.now() < bypass.until) {
-                // If current URL matches bypassed URL's origin or exact URL, allow
+                // If current URL matches bypassed URL's origin, normalized host, or exact URL, allow
                 try {
                     const bypassOrigin = new URL(bypass.url).origin;
                     const currentOrigin = new URL(details.url).origin;
-                    if (details.url === bypass.url || bypassOrigin === currentOrigin) {
+                    const bypassHost = (bypass.host || '').toLowerCase();
+                    let currentHost = '';
+                    try {
+                        currentHost = this.normalizeHostname ? this.normalizeHostname(details.url) : new URL(details.url).hostname.toLowerCase().replace(/^www\./, '');
+                    } catch {}
+                    if (details.url === bypass.url || bypassOrigin === currentOrigin || (bypassHost && bypassHost === currentHost)) {
                         console.log('⏰ Temporary bypass active:', {
                             bypassUrl: bypass.url,
                             currentUrl: details.url,

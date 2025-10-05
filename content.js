@@ -55,6 +55,7 @@ class TunnlContent {
                 this.showBlockModal(message.url, message.message, message.activityUnderstanding, message.currentTask);
                 sendResponse({ success: true });
             }
+            // Content extraction is now handled in background script via fetch
             
             return true; // Keep message channel open for async response
         });
@@ -153,6 +154,77 @@ class TunnlContent {
             return String(text).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
         } catch {
             return text;
+        }
+    }
+
+    extractPageContent() {
+        try {
+            // Remove script and style elements
+            const scripts = document.querySelectorAll('script, style, noscript, nav, header, footer, aside');
+            scripts.forEach(el => el.remove());
+            
+            // Get main content areas
+            const contentSelectors = [
+                'main',
+                'article',
+                '[role="main"]',
+                '.content',
+                '.main-content',
+                '.post-content',
+                '.entry-content',
+                '.article-content',
+                '.page-content',
+                'body'
+            ];
+            
+            let mainContent = '';
+            for (const selector of contentSelectors) {
+                const element = document.querySelector(selector);
+                if (element) {
+                    mainContent = element.innerText || element.textContent || '';
+                    if (mainContent.length > 100) break; // Use first substantial content
+                }
+            }
+            
+            // Fallback to body if no main content found
+            if (!mainContent || mainContent.length < 50) {
+                mainContent = document.body.innerText || document.body.textContent || '';
+            }
+            
+            // Clean up the text
+            const cleanedContent = mainContent
+                .replace(/\s+/g, ' ') // Replace multiple whitespace with single space
+                .replace(/\n\s*\n/g, '\n') // Remove empty lines
+                .trim();
+            
+            // Get page title and meta description for additional context
+            const title = document.title || '';
+            const metaDescription = document.querySelector('meta[name="description"]')?.content || '';
+            
+            // Combine title, description, and content
+            let fullContent = '';
+            if (title) fullContent += `Title: ${title}\n\n`;
+            if (metaDescription) fullContent += `Description: ${metaDescription}\n\n`;
+            if (cleanedContent) fullContent += `Content: ${cleanedContent}`;
+            
+            // Limit content length (2000 characters max)
+            const maxLength = 2000;
+            if (fullContent.length > maxLength) {
+                fullContent = fullContent.substring(0, maxLength) + '...';
+            }
+            
+            console.log('📄 Content extracted:', {
+                title: title,
+                description: metaDescription,
+                contentLength: cleanedContent.length,
+                fullLength: fullContent.length
+            });
+            
+            return fullContent;
+            
+        } catch (error) {
+            console.error('❌ Content extraction failed:', error);
+            return null;
         }
     }
 

@@ -4,6 +4,7 @@
 importScripts('task-validator.js');
 importScripts('statistics.js');
 importScripts('url-categories.js');
+importScripts('env-config.js');
 
 class TunnlBackground {
     constructor() {
@@ -24,6 +25,22 @@ class TunnlBackground {
         
         // Known URL categories - loaded from external file
         this.knownUrlCategories = KNOWN_URL_CATEGORIES;
+        
+        // Content extraction settings
+        this.contentExtractionEnabled = true;
+        this.maxContentLength = 2000;
+        this.contentCache = new Map(); // Cache extracted content
+        this.extractionInProgress = new Set(); // Track URLs currently being extracted
+        this.navigationDebounce = new Map(); // Debounce navigation events
+        
+        // Cost tracking settings
+        this.costTrackingEnabled = true;
+        this.gpt35TurboPricing = {
+            inputTokensPerDollar: 1000 / 0.0015, // ~666,667 tokens per dollar
+            outputTokensPerDollar: 1000 / 0.002, // ~500,000 tokens per dollar
+            inputCostPerToken: 0.0015 / 1000, // $0.0000015 per token
+            outputCostPerToken: 0.002 / 1000   // $0.000002 per token
+        };
         
         this.init();
     }
@@ -74,6 +91,22 @@ class TunnlBackground {
     }
 
     async loadSettings() {
+        // Check for environment variable first (for development)
+        let envApiKey = '';
+        try {
+            // Check both self.ENV_CONFIG (service worker) and ENV_CONFIG (fallback)
+            const envConfig = (typeof self !== 'undefined' && self.ENV_CONFIG) || 
+                             (typeof ENV_CONFIG !== 'undefined' && ENV_CONFIG) || 
+                             {};
+            
+            if (envConfig.OPENAI_API_KEY) {
+                envApiKey = envConfig.OPENAI_API_KEY;
+                console.log('🔑 Found API key in environment configuration');
+            }
+        } catch (error) {
+            console.log('🔧 No environment configuration available');
+        }
+
         // Try local storage first (higher limits), fallback to sync
         let result;
         try {
@@ -119,7 +152,7 @@ class TunnlBackground {
         }
 
         this.settings = {
-            openaiApiKey: result.openaiApiKey || '',
+            openaiApiKey: envApiKey || result.openaiApiKey || '',
             tasks: result.tasks || [],
             currentTask: result.currentTask || null,
             extensionEnabled: result.extensionEnabled !== false,
@@ -130,6 +163,15 @@ class TunnlBackground {
             selectedCategories: Array.isArray(result.selectedCategories) ? result.selectedCategories : [],
             useCategories: result.useCategories || false
         };
+
+        // Log API key source
+        if (envApiKey) {
+            console.log('🔑 Using API key from environment configuration');
+        } else if (result.openaiApiKey) {
+            console.log('🔑 Using API key from storage');
+        } else {
+            console.log('⚠️ No API key found - user will need to configure one');
+        }
     }
 
     updateTaskValidator() {
@@ -514,6 +556,22 @@ class TunnlBackground {
             return;
         }
 
+        // Debounce navigation events for the same URL (prevent multiple rapid events)
+        const now = Date.now();
+        const lastNavigation = this.navigationDebounce.get(details.url);
+        if (lastNavigation && (now - lastNavigation) < 1000) { // 1 second debounce
+            console.log('⏳ Debouncing navigation event for:', details.url);
+            return;
+        }
+        this.navigationDebounce.set(details.url, now);
+
+        // Clean up old debounce entries (older than 5 seconds)
+        for (const [url, timestamp] of this.navigationDebounce.entries()) {
+            if (now - timestamp > 5000) {
+                this.navigationDebounce.delete(url);
+            }
+        }
+
         // Track this URL for context
         this.addToRecentUrls(details.url);
 
@@ -612,9 +670,28 @@ class TunnlBackground {
                 return;
             }
 
+            // Extract content if enabled and not cached
+            let extractedContent = null;
+            if (this.contentExtractionEnabled) {
+                console.log('🔍 Attempting to extract content from URL:', url);
+                try {
+                    extractedContent = await this.extractContentFromUrl(url);
+                    if (extractedContent) {
+                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                        console.log('✅ Content extracted successfully (first 10 words):', `"${firstWords}..."`);
+                    } else {
+                        console.log('⚠️ Content extraction returned empty result');
+                    }
+                } catch (error) {
+                    console.warn('❌ Failed to extract content from URL:', url, error);
+                }
+            } else {
+                console.log('⏭️ Content extraction disabled, skipping for URL:', url);
+            }
+
             // Analyze URL with OpenAI
             console.log('🤖 Calling OpenAI API for analysis...');
-            const analysis = await this.analyzeUrl(url);
+            const analysis = await this.analyzeUrl(url, extractedContent);
             
             console.log('🧠 AI Analysis result:', {
                 shouldBlock: analysis.shouldBlock,
@@ -700,8 +777,11 @@ class TunnlBackground {
         return await this.taskValidator.validateTask(taskText);
     }
 
-    async analyzeUrl(url) {
+    async analyzeUrl(url, extractedContent = null) {
         console.log('🔍 Analyzing URL:', url);
+        if (extractedContent) {
+            console.log('📄 Using extracted content for analysis, length:', extractedContent.length);
+        }
         
         if (!this.settings.openaiApiKey) {
             console.log('❌ Extension not configured - API key missing');
@@ -724,7 +804,8 @@ class TunnlBackground {
             // First check known URL categories (fastest)
             const knownCategory = this.getKnownUrlCategory(url);
             if (knownCategory) {
-                console.log('🎯 Known URL category found:', knownCategory);
+                const categoryDesc = this.getCategoryDescription(knownCategory);
+                console.log('🎯 Known URL category found:', knownCategory, categoryDesc ? `(${categoryDesc.name})` : '');
                 const shouldBlock = this.settings.selectedCategories.includes(knownCategory);
                 return {
                     shouldBlock,
@@ -774,16 +855,52 @@ class TunnlBackground {
                 // Prepare system prompt based on mode
                 let systemPrompt;
                 if (this.settings.useCategories) {
+                    // Build category descriptions for selected categories
+                    const selectedCategoryDescriptions = this.settings.selectedCategories
+                        .map(category => {
+                            const desc = CATEGORY_DESCRIPTIONS[category];
+                            return desc ? `- "${category}" (${desc.name}): ${desc.description}` : `- "${category}": No description available`;
+                        })
+                        .join('\n');
+
+                    console.log('📋 Sending category descriptions to LLM for categories:', this.settings.selectedCategories);
+
+                    // Build content section for prompt
+                    const contentSection = extractedContent 
+                        ? `\n\nWebsite content (extracted for analysis):\n${extractedContent}`
+                        : '';
+
+                    // Log content being sent to LLM (first 10 words for debugging)
+                    if (extractedContent) {
+                        const firstWords = extractedContent.split(' ').slice(0, 30).join(' ');
+                        console.log('📄 Sending website content to LLM (first 10 words):', `"${firstWords}..."`);
+                        console.log('📊 Content stats:', {
+                            totalLength: extractedContent.length,
+                            hasTitle: extractedContent.includes('Title:'),
+                            hasDescription: extractedContent.includes('Description:'),
+                            hasContent: extractedContent.includes('Content:')
+                        });
+                    } else {
+                        console.log('⚠️ No website content available for LLM analysis');
+                    }
+
+                    // Log cost prediction before analysis
+                    const userPrompt = `Current URL to analyze: ${url}${contentSection}`;
+                    this.logCostPrediction(url, '', userPrompt, extractedContent);
+
                     systemPrompt = `
                     You are a productivity assistant that helps users stay focused by blocking distracting websites based on selected categories.
                     Analyze the given URL and determine if it belongs to any of the selected categories that should be blocked.
 
                     Selected categories to block: ${this.settings.selectedCategories.join(', ')}
 
+                    Category definitions for selected categories:
+                    ${selectedCategoryDescriptions}
+
                     Recent browsing context (last 5 URLs visited):
                     ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
 
-                    Current URL to analyze: ${url}
+                    Current URL to analyze: ${url}${contentSection}
 
                     Respond with a JSON object containing:
                     - "shouldBlock": boolean (true if the URL belongs to any of the selected categories)
@@ -791,19 +908,11 @@ class TunnlBackground {
                     - "activityUnderstanding": string (brief explanation of what type of content this URL provides)
                     - "confidence": number (0-1, how confident you are in this decision)
 
-                    Category definitions:
-                    - "gambling": Online casinos, betting sites, poker, sports betting, lottery sites
-                    - "nsfw": Adult content, pornography, explicit material
-                    - "social-media": Facebook, Twitter, Instagram, TikTok, LinkedIn, Snapchat, Reddit, Discord
-                    - "news": News websites, current events, political news, celebrity news
-                    - "gaming": Gaming websites, game stores, gaming forums, streaming platforms for games
-                    - "music": Music streaming, music videos, music news, concert tickets
-                    - "shopping": E-commerce sites, online stores, deal sites, auction sites
-                    - "travel": Travel booking, vacation planning, hotel booking, flight booking
-
                     Guidelines:
                     - Be precise in category matching - only block if the URL clearly belongs to the selected categories
                     - Consider the main purpose of the website, not just incidental content
+                    - Use the detailed category descriptions above to make accurate decisions
+                    - If website content is provided, use it to better understand the page's purpose and content
                     - Always allow: search engines, productivity tools, educational sites, work-related sites
                     - If unsure about category match, lean towards allowing (productivity over restriction)
                     - Do not block localhost, intranet, or internal company URLs
@@ -811,6 +920,29 @@ class TunnlBackground {
                 } else {
                     const currentTaskText = this.settings.currentTask?.text?.text || this.settings.currentTask?.text;
                     const normalizedCurrentTaskText = typeof currentTaskText === 'string' ? currentTaskText.trim() : '';
+                    // Build content section for task-based analysis
+                    const contentSection = extractedContent 
+                        ? `\n\nWebsite content (extracted for analysis):\n${extractedContent}`
+                        : '';
+
+                    // Log content being sent to LLM (first 10 words for debugging)
+                    if (extractedContent) {
+                        const firstWords = extractedContent.split(' ').slice(0, 10).join(' ');
+                        console.log('📄 Sending website content to LLM for task analysis (first 10 words):', `"${firstWords}..."`);
+                        console.log('📊 Content stats:', {
+                            totalLength: extractedContent.length,
+                            hasTitle: extractedContent.includes('Title:'),
+                            hasDescription: extractedContent.includes('Description:'),
+                            hasContent: extractedContent.includes('Content:')
+                        });
+                    } else {
+                        console.log('⚠️ No website content available for task-based LLM analysis');
+                    }
+
+                    // Log cost prediction before task-based analysis
+                    const userPrompt = `Current URL to analyze: ${url}${contentSection}`;
+                    this.logCostPrediction(url, '', userPrompt, extractedContent);
+
                     systemPrompt = `
                     You are a productivity assistant that helps users stay focused on their tasks. 
                     Analyze the given URL and determine if it's related to the user's current task by understanding the PURPOSE and CONTEXT of the task.
@@ -820,7 +952,7 @@ class TunnlBackground {
                     Recent browsing context (last 5 URLs visited):
                     ${this.recentUrls.length > 0 ? this.recentUrls.map((url, i) => `${i + 1}. ${url}`).join('\n') : 'No recent URLs available'}
 
-                    Current URL to analyze: ${url}
+                    Current URL to analyze: ${url}${contentSection}
 
                     Respond with a JSON object containing:
                     - "shouldBlock": boolean (true if the url is not related to the task and would keep the user from completing it)
@@ -832,6 +964,7 @@ class TunnlBackground {
                     - Parse tasks to understand the ACTION (researching, buying, learning, etc.) and SUBJECT (bananas, laptops, etc.)
                     - Look at each aspect of the URL (domain, path, query) to assess relevance to BOTH the action and subject
                     - Use the recent browsing context to understand the user's workflow and intent
+                    - If website content is provided, use it to better understand the page's purpose and relevance to the task
                     - Consider browsing patterns: if user is researching a topic, allow related sites even if not directly mentioned in task
                     - Allow sites that are TOOLS or PLATFORMS for completing the task action, even if they're not topically about the subject
                     - Examples of task-relevant platforms:
@@ -882,6 +1015,11 @@ class TunnlBackground {
 
             const data = await response.json();
             const content = data.choices[0].message.content;
+
+            // Log actual cost if usage information is available
+            if (data.usage) {
+                this.logActualCost(url, data.usage);
+            }
 
             try {
                 const result = JSON.parse(content);
@@ -1149,6 +1287,305 @@ class TunnlBackground {
         }
     }
 
+    // Get category description for debugging/logging
+    getCategoryDescription(category) {
+        return CATEGORY_DESCRIPTIONS[category] || null;
+    }
+
+    // Estimate token count for text (rough approximation)
+    estimateTokenCount(text) {
+        if (!text) return 0;
+        
+        // Rough estimation: 1 token ≈ 4 characters for English text
+        // This is a simplified approximation - actual tokenization varies
+        const charCount = text.length;
+        const estimatedTokens = Math.ceil(charCount / 4);
+        
+        return estimatedTokens;
+    }
+
+    // Calculate cost for GPT-3.5-turbo analysis
+    calculateAnalysisCost(systemPrompt, userPrompt, estimatedResponseLength = 100) {
+        if (!this.costTrackingEnabled) return null;
+        
+        const inputTokens = this.estimateTokenCount(systemPrompt) + this.estimateTokenCount(userPrompt);
+        const outputTokens = this.estimateTokenCount(' '.repeat(estimatedResponseLength)); // Estimate response length
+        
+        const inputCost = inputTokens * this.gpt35TurboPricing.inputCostPerToken;
+        const outputCost = outputTokens * this.gpt35TurboPricing.outputCostPerToken;
+        const totalCost = inputCost + outputCost;
+        
+        return {
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            inputCost,
+            outputCost,
+            totalCost,
+            formatted: {
+                inputCost: `$${inputCost.toFixed(6)}`,
+                outputCost: `$${outputCost.toFixed(6)}`,
+                totalCost: `$${totalCost.toFixed(6)}`
+            }
+        };
+    }
+
+    // Log cost prediction for analysis
+    logCostPrediction(url, systemPrompt, userPrompt, extractedContent = null) {
+        if (!this.costTrackingEnabled) return;
+        
+        const cost = this.calculateAnalysisCost(systemPrompt, userPrompt);
+        if (!cost) return;
+        
+        console.log('💰 Cost Prediction for Analysis:');
+        console.log(`   URL: ${url}`);
+        console.log(`   Input Tokens: ${cost.inputTokens.toLocaleString()}`);
+        console.log(`   Output Tokens: ${cost.outputTokens.toLocaleString()} (estimated)`);
+        console.log(`   Total Tokens: ${cost.totalTokens.toLocaleString()}`);
+        console.log(`   Input Cost: ${cost.formatted.inputCost}`);
+        console.log(`   Output Cost: ${cost.formatted.outputCost}`);
+        console.log(`   Total Cost: ${cost.formatted.totalCost}`);
+        
+        if (extractedContent) {
+            const contentTokens = this.estimateTokenCount(extractedContent);
+            console.log(`   Content Tokens: ${contentTokens.toLocaleString()}`);
+        }
+        
+        console.log('   Model: GPT-3.5-turbo');
+        console.log('   Pricing: $0.0015/1K input, $0.002/1K output tokens');
+    }
+
+    // Log actual cost after API call
+    logActualCost(url, usage) {
+        if (!this.costTrackingEnabled || !usage) return;
+        
+        const inputCost = usage.prompt_tokens * this.gpt35TurboPricing.inputCostPerToken;
+        const outputCost = usage.completion_tokens * this.gpt35TurboPricing.outputCostPerToken;
+        const totalCost = inputCost + outputCost;
+        
+        console.log('💰 Actual Cost for Analysis:');
+        console.log(`   URL: ${url}`);
+        console.log(`   Input Tokens: ${usage.prompt_tokens.toLocaleString()}`);
+        console.log(`   Output Tokens: ${usage.completion_tokens.toLocaleString()}`);
+        console.log(`   Total Tokens: ${usage.total_tokens.toLocaleString()}`);
+        console.log(`   Input Cost: $${inputCost.toFixed(6)}`);
+        console.log(`   Output Cost: $${outputCost.toFixed(6)}`);
+        console.log(`   Total Cost: $${totalCost.toFixed(6)}`);
+        console.log('   Model: GPT-3.5-turbo');
+    }
+
+    // Extract content from a URL using direct fetch (no tabs needed)
+    async extractContentFromUrl(url) {
+        try {
+            // Check if content is already cached
+            if (this.contentCache.has(url)) {
+                const cached = this.contentCache.get(url);
+                if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) { // 24 hours
+                    console.log('📄 Using cached content for:', url);
+                    return cached.content;
+                }
+            }
+
+            // Check if URL is suitable for content extraction
+            if (!this.isExtractableUrl(url)) {
+                console.log('⚠️ URL not suitable for content extraction:', url);
+                return null;
+            }
+
+            // Check if extraction is already in progress for this URL
+            if (this.extractionInProgress.has(url)) {
+                console.log('⏳ Content extraction already in progress for:', url);
+                // Wait for the ongoing extraction to complete
+                return new Promise((resolve) => {
+                    const checkInterval = setInterval(() => {
+                        const cached = this.contentCache.get(url);
+                        if (cached && (Date.now() - cached.timestamp) < 24 * 60 * 60 * 1000) {
+                            clearInterval(checkInterval);
+                            resolve(cached.content);
+                        }
+                    }, 100);
+                    
+                    // Timeout after 15 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve(null);
+                    }, 15000);
+                });
+            }
+
+            // Mark extraction as in progress
+            this.extractionInProgress.add(url);
+            console.log('🔍 Extracting content from:', url);
+
+            // Use fetch to get the HTML content directly (no tabs needed)
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                },
+                mode: 'cors'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const html = await response.text();
+            
+            // Extract text content from HTML
+            const content = this.extractTextFromHtml(html, url);
+
+            if (content) {
+                // Cache the content
+                this.contentCache.set(url, {
+                    content: content,
+                    timestamp: Date.now()
+                });
+
+                // Limit cache size
+                if (this.contentCache.size > 50) {
+                    const firstKey = this.contentCache.keys().next().value;
+                    this.contentCache.delete(firstKey);
+                }
+
+                console.log('✅ Content extracted successfully:', {
+                    url,
+                    contentLength: content.length
+                });
+
+                // Remove from in-progress set
+                this.extractionInProgress.delete(url);
+                return content;
+            }
+
+            // Remove from in-progress set
+            this.extractionInProgress.delete(url);
+            return null;
+
+        } catch (error) {
+            console.error('❌ Content extraction failed:', error);
+            // Remove from in-progress set
+            this.extractionInProgress.delete(url);
+            return null;
+        }
+    }
+
+    // Extract text content from HTML string using regex (service worker compatible)
+    extractTextFromHtml(html, url) {
+        try {
+            // Extract title using regex
+            const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : '';
+            
+            // Extract meta description using regex
+            const metaMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["'][^>]*>/i);
+            const metaDescription = metaMatch ? metaMatch[1].trim() : '';
+            
+            // Remove script and style tags and their content
+            let cleanHtml = html
+                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
+                .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+                .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+                .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+                .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '');
+            
+            // Try to find main content areas using regex
+            const mainContentSelectors = [
+                /<main[^>]*>([\s\S]*?)<\/main>/gi,
+                /<article[^>]*>([\s\S]*?)<\/article>/gi,
+                /<div[^>]*role=["']main["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*main-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*post-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*entry-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*id=["']content["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*id=["']main["'][^>]*>([\s\S]*?)<\/div>/gi
+            ];
+            
+            let mainContent = '';
+            for (const selector of mainContentSelectors) {
+                const match = cleanHtml.match(selector);
+                if (match && match[1]) {
+                    mainContent = match[1];
+                    break;
+                }
+            }
+            
+            // If no main content found, try to get body content
+            if (!mainContent) {
+                const bodyMatch = cleanHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/gi);
+                if (bodyMatch && bodyMatch[1]) {
+                    mainContent = bodyMatch[1];
+                }
+            }
+            
+            // If still no content, use the entire cleaned HTML
+            if (!mainContent) {
+                mainContent = cleanHtml;
+            }
+            
+            // Remove all HTML tags and get text content
+            const textContent = mainContent
+                .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+                .replace(/&nbsp;/g, ' ') // Replace HTML entities
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/\s+/g, ' ') // Normalize whitespace
+                .replace(/\n+/g, ' ')
+                .trim();
+            
+            // Combine title, description, and content
+            let result = '';
+            if (title) result += `Title: ${title}\n\n`;
+            if (metaDescription) result += `Description: ${metaDescription}\n\n`;
+            if (textContent) result += `Content: ${textContent}`;
+            
+            // Limit to max length
+            if (result.length > this.maxContentLength) {
+                result = result.substring(0, this.maxContentLength) + '...';
+            }
+            
+            return result || null;
+            
+        } catch (error) {
+            console.error('❌ HTML parsing failed:', error);
+            return null;
+        }
+    }
+
+    // Check if URL is suitable for content extraction
+    isExtractableUrl(url) {
+        try {
+            const urlObj = new URL(url);
+            const protocol = urlObj.protocol;
+            const hostname = urlObj.hostname;
+            
+            // Only extract from HTTP/HTTPS
+            if (!['http:', 'https:'].includes(protocol)) {
+                return false;
+            }
+            
+            // Skip certain domains that might cause issues
+            const skipDomains = [
+                'localhost',
+                '127.0.0.1',
+                'chrome://',
+                'chrome-extension://',
+                'file://'
+            ];
+            
+            return !skipDomains.some(domain => hostname.includes(domain));
+            
+        } catch (error) {
+            return false;
+        }
+    }
+
     // Quick category check using domain patterns
     quickCategoryCheck(url, selectedCategories) {
         try {
@@ -1258,3 +1695,4 @@ const tunnl = new TunnlBackground();
 setInterval(() => {
     tunnl.cleanupCache();
 }, 60 * 60 * 1000 * 24);
+

@@ -32,11 +32,26 @@ function buildCacheKey({ useCategories, url, selectedCategories = [], taskText =
         return `host:${host}||task:${taskText || ''}`;
     }
 }
+// Attach to global for service worker/browser
+try {
+    if (typeof self !== 'undefined') {
+        self.normalizeHostname = normalizeHostname;
+        self.lookupKnownCategory = lookupKnownCategory;
+        self.buildCacheKey = buildCacheKey;
+    } else if (typeof window !== 'undefined') {
+        window.normalizeHostname = normalizeHostname;
+        window.lookupKnownCategory = lookupKnownCategory;
+        window.buildCacheKey = buildCacheKey;
+    }
+} catch {}
 
-module.exports = {
-    normalizeHostname,
-    lookupKnownCategory,
-    buildCacheKey
-};
+// Node.js export for tests (guarded)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        normalizeHostname,
+        lookupKnownCategory,
+        buildCacheKey
+    };
+}
 
 

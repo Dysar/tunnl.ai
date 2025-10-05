@@ -6,7 +6,6 @@ importScripts('settings-page/statistics.js');
 importScripts('url-analysis/url-categories.js');
 importScripts('env-config.js');
 importScripts('url-analysis/url-utils.js');
-importScripts('url-analysis/content-extractor.js');
 importScripts('url-analysis/url-analysis.js');
 
 class TunnlBackground {

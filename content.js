@@ -177,9 +177,17 @@ class TunnlContent {
                 // No body yet; return empty to let background fallback to fetch
                 return '';
             }
-            // Remove script and style elements
-            const scripts = document.querySelectorAll('script, style, noscript, nav, header, footer, aside');
-            scripts.forEach(el => el.remove());
+            // Clone elements for content extraction (don't modify original DOM)
+            const scripts = document.querySelectorAll('script, style, noscript');
+            const elementsToHide = [];
+            
+            // Temporarily hide elements for content extraction
+            scripts.forEach(el => {
+                if (el.style.display !== 'none') {
+                    el.style.display = 'none';
+                    elementsToHide.push(el);
+                }
+            });
             
             // Get main content areas
             const contentSelectors = [
@@ -215,6 +223,11 @@ class TunnlContent {
                 .replace(/\s+/g, ' ') // Replace multiple whitespace with single space
                 .replace(/\n\s*\n/g, '\n') // Remove empty lines
                 .trim();
+            
+            // Restore hidden elements
+            elementsToHide.forEach(el => {
+                el.style.display = '';
+            });
             
             // Get page title and meta description for additional context
             const title = document.title || '';

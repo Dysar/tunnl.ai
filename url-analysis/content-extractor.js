@@ -1,107 +1,32 @@
 // Content extraction module for website analysis
-// This module uses Puppeteer to extract text content from websites
-
-const puppeteer = require('puppeteer');
+// This module provides content extraction functionality for service workers
 
 class ContentExtractor {
     constructor() {
-        this.browser = null;
-        this.isInitialized = false;
         this.maxContentLength = 2000; // Limit content length for LLM
         this.timeout = 10000; // 10 second timeout
     }
 
-    async initialize() {
-        if (this.isInitialized) return;
-        
-        try {
-            console.log('🚀 Initializing Puppeteer browser...');
-            this.browser = await puppeteer.launch({
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
-                ]
-            });
-            this.isInitialized = true;
-            console.log('✅ Puppeteer browser initialized');
-        } catch (error) {
-            console.error('❌ Failed to initialize Puppeteer:', error);
-            throw error;
-        }
-    }
-
     async extractContent(url) {
-        if (!this.isInitialized) {
-            await this.initialize();
-        }
-
-        let page = null;
         try {
             console.log('🔍 Extracting content from:', url);
             
-            page = await this.browser.newPage();
-            
-            // Set user agent to avoid blocking
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-            
-            // Set viewport
-            await page.setViewport({ width: 1280, height: 720 });
-            
-            // Navigate to the page with timeout
-            await page.goto(url, { 
-                waitUntil: 'domcontentloaded', 
-                timeout: this.timeout 
+            // Use fetch to get the HTML content
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
             });
             
-            // Wait a bit for dynamic content to load
-            await page.waitForTimeout(2000);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
             
-            // Extract text content
-            const content = await page.evaluate(() => {
-                // Remove script and style elements
-                const scripts = document.querySelectorAll('script, style, noscript');
-                scripts.forEach(el => el.remove());
-                
-                // Get main content areas
-                const contentSelectors = [
-                    'main',
-                    'article',
-                    '[role="main"]',
-                    '.content',
-                    '.main-content',
-                    '.post-content',
-                    '.entry-content',
-                    'body'
-                ];
-                
-                let mainContent = '';
-                for (const selector of contentSelectors) {
-                    const element = document.querySelector(selector);
-                    if (element) {
-                        mainContent = element.innerText || element.textContent || '';
-                        if (mainContent.length > 100) break; // Use first substantial content
-                    }
-                }
-                
-                // Fallback to body if no main content found
-                if (!mainContent || mainContent.length < 50) {
-                    mainContent = document.body.innerText || document.body.textContent || '';
-                }
-                
-                // Clean up the text
-                return mainContent
-                    .replace(/\s+/g, ' ') // Replace multiple whitespace with single space
-                    .replace(/\n\s*\n/g, '\n') // Remove empty lines
-                    .trim();
-            });
+            const html = await response.text();
+            
+            // Extract text content using regex (service worker compatible)
+            const content = this.extractTextFromHtml(html, url);
             
             // Truncate content if too long
             const truncatedContent = content.length > this.maxContentLength 
@@ -128,29 +53,25 @@ class ContentExtractor {
                 error: error.message,
                 content: null
             };
-        } finally {
-            if (page) {
-                await page.close();
-            }
         }
     }
 
     async extractTitle(url) {
-        if (!this.isInitialized) {
-            await this.initialize();
-        }
-
-        let page = null;
         try {
-            page = await this.browser.newPage();
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-            
-            await page.goto(url, { 
-                waitUntil: 'domcontentloaded', 
-                timeout: this.timeout 
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
             });
             
-            const title = await page.title();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const html = await response.text();
+            const title = this.extractTitleFromHtml(html);
+            
             return {
                 success: true,
                 title: title || 'Untitled'
@@ -163,19 +84,84 @@ class ContentExtractor {
                 error: error.message,
                 title: null
             };
-        } finally {
-            if (page) {
-                await page.close();
-            }
         }
     }
 
-    async close() {
-        if (this.browser) {
-            await this.browser.close();
-            this.browser = null;
-            this.isInitialized = false;
-            console.log('🔒 Puppeteer browser closed');
+    // Extract text content from HTML using regex (service worker compatible)
+    extractTextFromHtml(html, url) {
+        try {
+            // Extract title
+            const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : '';
+            
+            // Extract meta description
+            const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
+            const description = descMatch ? descMatch[1].trim() : '';
+            
+            // Remove script and style tags
+            let cleanHtml = html
+                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
+            
+            // Extract main content areas
+            const contentSelectors = [
+                /<main[^>]*>([\s\S]*?)<\/main>/gi,
+                /<article[^>]*>([\s\S]*?)<\/article>/gi,
+                /<div[^>]*role=["']main["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*main-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*post-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+                /<div[^>]*class=["'][^"']*entry-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi
+            ];
+            
+            let mainContent = '';
+            for (const selector of contentSelectors) {
+                const match = cleanHtml.match(selector);
+                if (match && match[1]) {
+                    mainContent = match[1];
+                    if (mainContent.length > 100) break; // Use first substantial content
+                }
+            }
+            
+            // Fallback to body content
+            if (!mainContent || mainContent.length < 50) {
+                const bodyMatch = cleanHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/gi);
+                if (bodyMatch && bodyMatch[1]) {
+                    mainContent = bodyMatch[1];
+                }
+            }
+            
+            // Remove HTML tags and clean up text
+            let text = mainContent
+                .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+                .replace(/&[^;]+;/g, ' ') // Remove HTML entities
+                .replace(/\s+/g, ' ') // Normalize whitespace
+                .replace(/\n\s*\n/g, '\n') // Remove empty lines
+                .trim();
+            
+            // Build final content
+            let finalContent = '';
+            if (title) finalContent += `Title: ${title}\n\n`;
+            if (description) finalContent += `Description: ${description}\n\n`;
+            if (text) finalContent += `Content: ${text}`;
+            
+            return finalContent.trim();
+            
+        } catch (error) {
+            console.error('Error extracting text from HTML:', error);
+            return '';
+        }
+    }
+    
+    // Extract title from HTML
+    extractTitleFromHtml(html) {
+        try {
+            const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+            return titleMatch ? titleMatch[1].trim() : '';
+        } catch (error) {
+            console.error('Error extracting title from HTML:', error);
+            return '';
         }
     }
 
@@ -218,12 +204,7 @@ class ContentExtractor {
     }
 }
 
-// Export for use in background script
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ContentExtractor;
-}
-
-// For browser environment (if needed)
-if (typeof window !== 'undefined') {
-    window.ContentExtractor = ContentExtractor;
+// Make ContentExtractor globally available for service worker
+if (typeof self !== 'undefined') {
+    self.ContentExtractor = ContentExtractor;
 }
